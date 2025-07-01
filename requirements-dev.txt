@@ -1,0 +1,9 @@
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Development dependencies
+pytest==7.4.2
+pytest-flask==1.2.0
+black==23.9.1
+flake8==6.0.0
+mypy==1.5.1
