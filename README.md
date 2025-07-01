@@ -25,10 +25,6 @@ An AI-powered Flask-based API for managing personal accounts and transactions us
    # On Linux/Mac:
    source venv/bin/activate
    
-   # On Windows:
-   venv\Scripts\activate
-   ```
-
 3. Install dependencies:
    ```bash
    pip install -r requirements.txt
@@ -47,11 +43,22 @@ An AI-powered Flask-based API for managing personal accounts and transactions us
 
 The API will be available at `http://localhost:5000`
 
+## Generating a Subscription
+
+To use the API, you first need a subscription token. You can generate one by running the `generate_subscription.py` script:
+
+```bash
+python generate_subscription.py "Your Name"
+```
+
+This will create a new subscription and output an authentication token. Use this token as a Bearer token in your API requests.
+
 ## API Endpoints
 
 The application provides an AI-powered conversational interface instead of traditional REST endpoints. All requests require authentication using a Bearer token.
 
 ### Authentication
+Authentication is done via a 
 ```
 Authorization: Bearer <your_subscription_token>
 ```
@@ -60,9 +67,9 @@ Authorization: Bearer <your_subscription_token>
 
 1. Save this shortcut to your device https://www.icloud.com/shortcuts/070d9eef36134caa8f70fa988407f142
 2. Edit the shortcut to add your authentication token in the "Get contents of" step:
-   a. Click `Show More`
-   b. Edit the Value of Header `Authorization`, it should say 'Bearer <your token>`
-   c. Replace `<your token>` with your token so it looks like: `Bearer my_token_232j23hk23j4h2`
+   - Click `Show More`
+   - Edit the Value of Header `Authorization`, it should say 'Bearer <your token>`
+   - Replace `<your token>` with your token so it looks like: `Bearer my_token_232j23hk23j4h2`
 3. Click play to test the shortcut.
 
 

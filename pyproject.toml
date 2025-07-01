@@ -1,0 +1,25 @@
+[project]
+name = "piggy_bank"
+version = "1.0.0"
+dependencies = [
+    "Flask",
+    "openai",
+    "python-dotenv"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-flask",
+    "black",
+    "flake8",
+    "mypy",
+    "pytest-cov"
+]
+
+[tool.flake8]
+max-line-length = 120
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "--cov=piggy_bank --cov-report=term-missing"

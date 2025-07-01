@@ -17,8 +17,8 @@ pip install --upgrade pip
 
 # Install requirements
 echo "Installing requirements..."
-pip install -r requirements.txt
+pip install .[dev]
 
 echo "Setup complete! Virtual environment is activated."
-echo "To run the application: python pigybank.py"
+echo "To run the application: python main.py"
 echo "To deactivate the virtual environment later: deactivate"

@@ -1,6 +1,6 @@
 import json
-from typing import Any, Dict, Union, Tuple, List
-from flask import Response, jsonify, g
+from typing import Any, Dict, List
+from flask import g
 from openai.types.chat import ChatCompletionMessageToolCall
 from piggy_bank.services import (
     add_account,
@@ -23,8 +23,14 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "The name of the account to add."},
-                        "subscription_id": {"type": "integer", "description": "The subscription ID for the account."},
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the account to add.",
+                        },
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID for the account.",
+                        },
                     },
                     "required": ["name", "subscription_id"],
                 },
@@ -38,7 +44,10 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "subscription_id": {"type": "integer", "description": "The subscription ID."},
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID.",
+                        },
                     },
                     "required": ["subscription_id"],
                 },
@@ -52,8 +61,14 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "The name of the account."},
-                        "subscription_id": {"type": "integer", "description": "The subscription ID."},
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the account.",
+                        },
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID.",
+                        },
                     },
                     "required": ["name", "subscription_id"],
                 },
@@ -67,8 +82,14 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "The name of the account."},
-                        "subscription_id": {"type": "integer", "description": "The subscription ID."},
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the account.",
+                        },
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID.",
+                        },
                     },
                     "required": ["name", "subscription_id"],
                 },
@@ -82,10 +103,22 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "The name of the account."},
-                        "amount": {"type": "number", "description": "The amount of money to add."},
-                        "reason": {"type": "string", "description": "The reason for adding the money."},
-                        "subscription_id": {"type": "integer", "description": "The subscription ID."},
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the account.",
+                        },
+                        "amount": {
+                            "type": "number",
+                            "description": "The amount of money to add.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "The reason for adding the money.",
+                        },
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID.",
+                        },
                     },
                     "required": ["name", "amount", "reason", "subscription_id"],
                 },
@@ -99,10 +132,22 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "The name of the account."},
-                        "amount": {"type": "number", "description": "The amount of money to withdraw."},
-                        "reason": {"type": "string", "description": "The reason for withdrawing the money."},
-                        "subscription_id": {"type": "integer", "description": "The subscription ID."},
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the account.",
+                        },
+                        "amount": {
+                            "type": "number",
+                            "description": "The amount of money to withdraw.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "The reason for withdrawing the money.",
+                        },
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID.",
+                        },
                     },
                     "required": ["name", "amount", "reason", "subscription_id"],
                 },
@@ -116,13 +161,34 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "from_name": {"type": "string", "description": "The name of the account to transfer from."},
-                        "to_name": {"type": "string", "description": "The name of the account to transfer to."},
-                        "amount": {"type": "number", "description": "The amount of money to transfer."},
-                        "reason": {"type": "string", "description": "The reason for the transfer."},
-                        "subscription_id": {"type": "integer", "description": "The subscription ID."},
+                        "from_name": {
+                            "type": "string",
+                            "description": "The name of the account to transfer from.",
+                        },
+                        "to_name": {
+                            "type": "string",
+                            "description": "The name of the account to transfer to.",
+                        },
+                        "amount": {
+                            "type": "number",
+                            "description": "The amount of money to transfer.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "The reason for the transfer.",
+                        },
+                        "subscription_id": {
+                            "type": "integer",
+                            "description": "The subscription ID.",
+                        },
                     },
-                    "required": ["from_name", "to_name", "amount", "reason", "subscription_id"],
+                    "required": [
+                        "from_name",
+                        "to_name",
+                        "amount",
+                        "reason",
+                        "subscription_id",
+                    ],
                 },
             },
         },
@@ -135,30 +201,39 @@ def run_tools(tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str,
         tool_name = tool_call.function.name
         kwargs = json.loads(tool_call.function.arguments)
         # Inject subscription_id from Flask context if available
-        if hasattr(g, 'subscription_id'):
-            kwargs['subscription_id'] = g.subscription_id
+        if hasattr(g, "subscription_id"):
+            kwargs["subscription_id"] = g.subscription_id
 
         if tool_name == "add_account":
-            result = add_account(name=str(kwargs.get("name")), subscription_id=kwargs.get("subscription_id"))
+            result = add_account(
+                name=str(kwargs.get("name")),
+                subscription_id=kwargs.get("subscription_id"),
+            )
         elif tool_name == "list_accounts":
             result = list_accounts(subscription_id=kwargs.get("subscription_id"))
         elif tool_name == "get_balance":
-            result = get_balance(name=str(kwargs.get("name")), subscription_id=kwargs.get("subscription_id"))
+            result = get_balance(
+                name=str(kwargs.get("name")),
+                subscription_id=kwargs.get("subscription_id"),
+            )
         elif tool_name == "get_transactions":
-            result = get_transactions(name=str(kwargs.get("name")), subscription_id=kwargs.get("subscription_id"))
+            result = get_transactions(
+                name=str(kwargs.get("name")),
+                subscription_id=kwargs.get("subscription_id"),
+            )
         elif tool_name == "add_money":
             result = add_money(
                 name=str(kwargs.get("name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
-                subscription_id=kwargs.get("subscription_id")
+                subscription_id=kwargs.get("subscription_id"),
             )
         elif tool_name == "withdraw_money":
             result = withdraw_money(
                 name=str(kwargs.get("name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
-                subscription_id=kwargs.get("subscription_id")
+                subscription_id=kwargs.get("subscription_id"),
             )
         elif tool_name == "transfer_money":
             result = transfer_money(
@@ -166,16 +241,15 @@ def run_tools(tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str,
                 to_name=str(kwargs.get("to_name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
-                subscription_id=kwargs.get("subscription_id")
+                subscription_id=kwargs.get("subscription_id"),
             )
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
 
-        if isinstance(result, tuple):
-            response_data, _ = result
-            tool_output = response_data.get_data(as_text=True)
+        if result["error"]:
+            tool_output = json.dumps({"error": result["error"]})
         else:
-            tool_output = result.get_data(as_text=True)
+            tool_output = json.dumps(result["response"])
 
         tool_outputs.append(
             {
