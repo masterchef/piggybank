@@ -128,7 +128,7 @@ The application uses SQLite with the following tables:
 ### Core Tables
 - **`subscriptions`** - Store subscription information and authentication tokens
   - `id` (Primary Key)
-  - `family_name` - Name of the subscription holder
+  - `name` - Name of the subscription holder
   - `auth_token` - Unique authentication token
 
 - **`accounts`** - Store account information per subscription
