@@ -278,3 +278,74 @@ def transfer_money(
         db.rollback()
         log.error("Transfer failed due to an unexpected error: %s", e)
         return {"response": {}, "error": "Transfer failed"}
+
+
+def remove_account(db: sqlite3.Connection, account_id: int, subscription_id: int) -> ServiceResult:
+    """Remove an account and all its associated transactions.
+
+    Verifies that the account has no money before removal.
+    If account has a balance, user must withdraw funds first.
+    """
+    # Verify account belongs to subscription
+    account = db.execute(
+        "SELECT id, name FROM accounts WHERE id = ? AND subscription_id = ?",
+        (account_id, subscription_id),
+    ).fetchone()
+    if not account:
+        log.warning(
+            "Attempted to remove non-existent account: %s in subscription %s",
+            account_id,
+            subscription_id,
+        )
+        return {"response": {}, "error": "Account not found"}
+
+    account_name = account["name"]
+
+    # Check account balance
+    balance_row = db.execute(
+        "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    current_balance = balance_row["balance"]
+
+    if current_balance != 0:
+        log.warning(
+            "Cannot remove account %s (%s) in subscription %s: account has balance of %s. "
+            "Please withdraw remaining balance first.",
+            account_id,
+            account_name,
+            subscription_id,
+            current_balance,
+        )
+        return {
+            "response": {},
+            "error": f"Account has balance of {current_balance}. Please withdraw remaining balance first.",
+        }
+
+    # Remove all transactions for this account first (due to foreign key constraint)
+    transactions_deleted = db.execute(
+        "DELETE FROM transactions WHERE account_id = ?",
+        (account_id,),
+    ).rowcount
+
+    # Remove the account
+    db.execute(
+        "DELETE FROM accounts WHERE id = ? AND subscription_id = ?",
+        (account_id, subscription_id),
+    )
+
+    db.commit()
+    log.info(
+        "Removed account %s (%s) and %d transactions in subscription %s",
+        account_id,
+        account_name,
+        transactions_deleted,
+        subscription_id,
+    )
+
+    return {
+        "response": {
+            "message": f'Account "{account_name}" and {transactions_deleted} associated transactions removed successfully'
+        },
+        "error": None,
+    }
