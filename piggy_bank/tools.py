@@ -1,4 +1,6 @@
 import json
+import logging
+import sqlite3
 from typing import Any, Dict, List
 from flask import g
 from openai.types.chat import ChatCompletionMessageToolCall
@@ -195,7 +197,7 @@ def get_tools() -> list[dict[str, Any]]:
     ]
 
 
-def run_tools(tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str, Any]]:
+def run_tools(db: sqlite3.Connection, tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str, Any]]:
     tool_outputs = []
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
@@ -203,26 +205,31 @@ def run_tools(tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str,
         # Inject subscription_id from Flask context if available
         if hasattr(g, "subscription_id"):
             kwargs["subscription_id"] = g.subscription_id
+        logging.info("subscription_id: %s", g.subscription_id)
 
         if tool_name == "add_account":
             result = add_account(
+                db=db,
                 name=str(kwargs.get("name")),
                 subscription_id=kwargs.get("subscription_id"),
             )
         elif tool_name == "list_accounts":
-            result = list_accounts(subscription_id=kwargs.get("subscription_id"))
+            result = list_accounts(db=db, subscription_id=kwargs.get("subscription_id"))
         elif tool_name == "get_balance":
             result = get_balance(
+                db=db,
                 name=str(kwargs.get("name")),
                 subscription_id=kwargs.get("subscription_id"),
             )
         elif tool_name == "get_transactions":
             result = get_transactions(
+                db=db,
                 name=str(kwargs.get("name")),
                 subscription_id=kwargs.get("subscription_id"),
             )
         elif tool_name == "add_money":
             result = add_money(
+                db=db,
                 name=str(kwargs.get("name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
@@ -230,6 +237,7 @@ def run_tools(tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str,
             )
         elif tool_name == "withdraw_money":
             result = withdraw_money(
+                db=db,
                 name=str(kwargs.get("name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
@@ -237,6 +245,7 @@ def run_tools(tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str,
             )
         elif tool_name == "transfer_money":
             result = transfer_money(
+                db=db,
                 from_name=str(kwargs.get("from_name")),
                 to_name=str(kwargs.get("to_name")),
                 amount=float(kwargs.get("amount") or 0.0),

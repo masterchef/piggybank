@@ -1,4 +1,3 @@
-import sqlite3
 import os
 import logging
 import time
@@ -8,8 +7,9 @@ from typing import Optional, Dict, Any, Union, Tuple, List
 from flask import Flask, request, jsonify, g, Response
 from openai import OpenAI
 from dotenv import load_dotenv
-from piggy_bank.db import get_db, init_db, with_db
+from piggy_bank.db import init_db
 from piggy_bank.tools import get_tools, run_tools
+import sqlite3
 
 load_dotenv()
 
@@ -21,6 +21,13 @@ DB_FILE: str = "pigbank.db"
 client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
 
 SESSION_TIMEOUT_SECONDS: int = 60
+
+
+def get_db() -> sqlite3.Connection:
+    """Get a database connection for the current request."""
+    if "db" not in g:
+        g.db = init_db(app.config["DATABASE"])
+    return g.db  # type: ignore
 
 
 @app.teardown_appcontext
@@ -56,11 +63,11 @@ def check_auth() -> Optional[Tuple[Response, int]]:
 # ------------------ OPENAI HELPERS ------------------
 
 
-@with_db
 def get_or_create_session(
-    db: sqlite3.Connection, session_id: Optional[str], now: float, subscription_id: int
+    session_id: Optional[str], now: float, subscription_id: int
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Get existing session or create a new one, returning session_id and messages."""
+    db = get_db()
     # If session_id is provided and exists, use it
     if session_id:
         log.info("Looking for existing session: %s", session_id)
@@ -71,9 +78,7 @@ def get_or_create_session(
         row = cur.fetchone()
         if row and now - row["last_access"] < SESSION_TIMEOUT_SECONDS:
             # Update last access time
-            db.execute(
-                "UPDATE sessions SET last_access = ? WHERE id = ?", (now, session_id)
-            )
+            db.execute("UPDATE sessions SET last_access = ? WHERE id = ?", (now, session_id))
             db.commit()
             log.info("Using existing session: %s", session_id)
             return session_id, json.loads(row["messages"])
@@ -116,11 +121,9 @@ def get_or_create_session(
     return new_session_id, messages
 
 
-@with_db
-def update_session_messages(
-    db: sqlite3.Connection, session_id: str, messages: List[Dict[str, Any]]
-) -> None:
+def update_session_messages(session_id: str, messages: List[Dict[str, Any]]) -> None:
     """Update the messages for a session in the database."""
+    db = get_db()
     db.execute(
         "UPDATE sessions SET messages = ?, last_access = ? WHERE id = ?",
         (json.dumps(messages), time.time(), session_id),
@@ -130,6 +133,7 @@ def update_session_messages(
 
 def process_openai_response(messages: List[Dict[str, Any]]) -> Any:
     """Process OpenAI response and handle tool calls if needed."""
+    db = get_db()
     response = client.chat.completions.create(
         model="gpt-4-turbo",
         messages=messages,  # type: ignore
@@ -149,7 +153,7 @@ def process_openai_response(messages: List[Dict[str, Any]]) -> Any:
         messages.append(response_message.model_dump())  # Convert to dict
 
         with app.app_context():
-            tool_outputs = run_tools(tool_calls)
+            tool_outputs = run_tools(db, tool_calls)
 
         for tool_output in tool_outputs:
             messages.append(tool_output)
@@ -164,10 +168,10 @@ def process_openai_response(messages: List[Dict[str, Any]]) -> Any:
     return response_message
 
 
-@with_db
-def cleanup_expired_sessions(db: sqlite3.Connection) -> None:
+def cleanup_expired_sessions() -> None:
     """Remove expired sessions from the database."""
     cutoff_time = time.time() - SESSION_TIMEOUT_SECONDS
+    db = get_db()
     cur = db.execute("DELETE FROM sessions WHERE last_access < ?", (cutoff_time,))
     deleted_count = cur.rowcount
     db.commit()
@@ -184,15 +188,13 @@ def agent() -> Union[Response, Tuple[Response, int]]:
     user_query: Optional[str] = data.get("query")
     session_id: Optional[str] = data.get("session_id")
     subscription_id = g.get("subscription_id")
-
+    log.info("Received sub_id: %s", subscription_id)
     if not user_query:
         return jsonify({"error": "Query is required"}), 400
 
     try:
         # Get or create session and retrieve conversation history
-        session_id, messages = get_or_create_session(
-            session_id, time.time(), subscription_id
-        )
+        session_id, messages = get_or_create_session(session_id, time.time(), subscription_id)
 
         # Add user query to conversation
         messages.append({"role": "user", "content": user_query})
@@ -213,8 +215,7 @@ def agent() -> Union[Response, Tuple[Response, int]]:
 # ------------------ MAIN ------------------
 
 if __name__ == "__main__":
+    app.config["DATABASE"] = DB_FILE
     with app.app_context():
-        db = get_db()
-        init_db(db)
         cleanup_expired_sessions()  # Clean up any expired sessions on startup
     app.run(host="0.0.0.0", port=5000)

@@ -1,7 +1,4 @@
 import sqlite3
-from functools import wraps
-from flask import g
-from typing import Callable
 
 
 def normalize_account_name(name: str) -> str:
@@ -11,32 +8,14 @@ def normalize_account_name(name: str) -> str:
     return name_mappings.get(name, name)
 
 
-def get_db() -> sqlite3.Connection:
-    """Get database connection from Flask's application context."""
-    if "db" not in g:
-        g.db = sqlite3.connect("pigbank.db")
-        g.db.row_factory = sqlite3.Row
-    return g.db
+def init_db(path: str) -> sqlite3.Connection:
+    db = sqlite3.connect(path, check_same_thread=False)
+    db.row_factory = sqlite3.Row
+    create_tables(db)
+    return db
 
 
-def with_db(func: Callable) -> Callable:
-    """Decorator that provides database connection and commits after function execution."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        db = get_db()
-        try:
-            result = func(db, *args, **kwargs)
-            db.commit()
-            return result
-        except Exception as e:
-            db.rollback()
-            raise e
-
-    return wrapper
-
-
-def init_db(db) -> None:
+def create_tables(db: sqlite3.Connection) -> None:
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS subscriptions (

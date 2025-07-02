@@ -1,18 +1,10 @@
 import json
-import pytest
+import sqlite3
 from unittest.mock import patch
 from piggy_bank.tools import get_tools, run_tools
 from openai.types.chat import ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function
 from flask import Flask
-
-
-@pytest.fixture
-def app():
-    app = Flask(__name__)
-    app.config["TESTING"] = True
-    with app.app_context():
-        yield app
 
 
 def test_get_tools():
@@ -42,6 +34,7 @@ def test_run_tools(
     mock_list_accounts,
     mock_add_account,
     app: Flask,
+    get_test_db: sqlite3.Connection,
 ):
     # Mock the service functions
     mock_add_account.return_value = {
@@ -82,7 +75,7 @@ def test_run_tools(
     ]
 
     with app.app_context():
-        tool_outputs = run_tools(tool_calls)
+        tool_outputs = run_tools(get_test_db, tool_calls)
 
     assert len(tool_outputs) == 1
     output = tool_outputs[0]
@@ -90,4 +83,4 @@ def test_run_tools(
     assert output["role"] == "tool"
     assert output["name"] == "add_account"
     assert output["content"] == '{"message": "Account added"}'
-    mock_add_account.assert_called_once_with(name="test", subscription_id=1)
+    mock_add_account.assert_called_once_with(db=get_test_db, name="test", subscription_id=1)

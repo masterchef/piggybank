@@ -1,9 +1,7 @@
 import sqlite3
 import logging
-from functools import wraps
-from flask import g
 from piggy_bank.utils import normalize_account_name
-from typing import Callable, TypedDict, Optional
+from typing import TypedDict, Optional
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -16,34 +14,7 @@ class ServiceResult(TypedDict):
     error: Optional[str]
 
 
-def get_db() -> sqlite3.Connection:
-    if "db" not in g:
-        g.db = sqlite3.connect("pigbank.db")
-        g.db.row_factory = sqlite3.Row
-    return g.db
-
-
-def with_db(func: Callable) -> Callable:
-    """Decorator that provides database connection and commits after function execution."""
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        db = get_db()
-        try:
-            result = func(db, *args, **kwargs)
-            db.commit()
-            return result
-        except Exception as e:
-            db.rollback()
-            raise e
-
-    return wrapper
-
-
-@with_db
-def add_account(
-    db: sqlite3.Connection, name: str, subscription_id: int
-) -> ServiceResult:
+def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
     name = normalize_account_name(name)
     try:
         db.execute(
@@ -64,7 +35,6 @@ def add_account(
         return {"response": {}, "error": "Account already exists"}
 
 
-@with_db
 def list_accounts(db: sqlite3.Connection, subscription_id: int) -> ServiceResult:
     rows = db.execute(
         """
@@ -77,18 +47,12 @@ def list_accounts(db: sqlite3.Connection, subscription_id: int) -> ServiceResult
     """,
         (subscription_id,),
     ).fetchall()
-    accounts = [
-        {"name": row["name"], "id": row["id"], "balance": row["balance"]}
-        for row in rows
-    ]
+    accounts = [{"name": row["name"], "id": row["id"], "balance": row["balance"]} for row in rows]
     log.info("Listed %d accounts for subscription %s", len(accounts), subscription_id)
     return {"response": {"accounts": accounts}, "error": None}
 
 
-@with_db
-def get_balance(
-    db: sqlite3.Connection, name: str, subscription_id: int
-) -> ServiceResult:
+def get_balance(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
     name = normalize_account_name(name)
     account = db.execute(
         "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
@@ -116,10 +80,7 @@ def get_balance(
     return {"response": {"balance": balance_row["balance"]}, "error": None}
 
 
-@with_db
-def get_transactions(
-    db: sqlite3.Connection, name: str, subscription_id: int, last_n: int = 5
-) -> ServiceResult:
+def get_transactions(db: sqlite3.Connection, name: str, subscription_id: int, last_n: int = 5) -> ServiceResult:
     name = normalize_account_name(name)
     account = db.execute(
         "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
@@ -167,10 +128,7 @@ def get_transactions(
     }
 
 
-@with_db
-def add_money(
-    db: sqlite3.Connection, name: str, amount: float, reason: str, subscription_id: int
-) -> ServiceResult:
+def add_money(db: sqlite3.Connection, name: str, amount: float, reason: str, subscription_id: int) -> ServiceResult:
     name = normalize_account_name(name)
     account = db.execute(
         "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
@@ -197,10 +155,9 @@ def add_money(
         reason,
         subscription_id,
     )
-    return get_balance(name, subscription_id)
+    return get_balance(db, name, subscription_id)
 
 
-@with_db
 def withdraw_money(
     db: sqlite3.Connection, name: str, amount: float, reason: str, subscription_id: int
 ) -> ServiceResult:
@@ -245,10 +202,9 @@ def withdraw_money(
         reason,
         subscription_id,
     )
-    return get_balance(name, subscription_id)
+    return get_balance(db, name, subscription_id)
 
 
-@with_db
 def transfer_money(
     db: sqlite3.Connection,
     from_name: str,
@@ -290,8 +246,7 @@ def transfer_money(
         if balance_row["balance"] < amount:
             db.rollback()
             log.warning(
-                "Transfer failed: insufficient funds in account %s in "
-                "subscription %s. Balance: %s, Amount: %s",
+                "Transfer failed: insufficient funds in account %s in " "subscription %s. Balance: %s, Amount: %s",
                 from_name,
                 subscription_id,
                 balance_row["balance"],
@@ -317,9 +272,7 @@ def transfer_money(
             subscription_id,
         )
         return {
-            "response": {
-                "message": f"Transferred {amount} from {from_name} to {to_name}"
-            },
+            "response": {"message": f"Transferred {amount} from {from_name} to {to_name}"},
             "error": None,
         }
     except Exception as e:

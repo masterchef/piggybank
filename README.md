@@ -58,7 +58,7 @@ This will create a new subscription and output an authentication token. Use this
 The application provides an AI-powered conversational interface instead of traditional REST endpoints. All requests require authentication using a Bearer token.
 
 ### Authentication
-Authentication is done via a 
+Add `Authorization` header to your requests.
 ```
 Authorization: Bearer <your_subscription_token>
 ```
@@ -249,6 +249,35 @@ The project includes pre-configured VS Code tasks:
 - Format Code
 - Lint Code
 - Type Check
+
+## Running on a Raspberry Pi at Startup
+
+To run this application automatically on a Raspberry Pi at startup, you can use the provided `systemd` service file.
+
+1.  **Make the `run.sh` script executable:**
+
+    ```bash
+    chmod +x run.sh
+    ```
+
+2.  **Move the `systemd` service file:**
+
+    ```bash
+    sudo mv piggybank.service /etc/systemd/system/
+    ```
+
+3.  **Enable and start the service:**
+
+    ```bash
+    sudo systemctl enable piggybank.service
+    sudo systemctl start piggybank.service
+    ```
+
+4.  **Check the service status:**
+
+    ```bash
+    sudo systemctl status piggybank.service
+    ```
 
 ## Dependencies
 

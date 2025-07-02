@@ -7,20 +7,11 @@
 	"settings": {
 		"python.defaultInterpreterPath": "./venv/bin/python",
 		"python.terminal.activateEnvironment": true,
-		"python.linting.enabled": true,
-		"python.linting.flake8Enabled": true,
-		"python.linting.mypyEnabled": true,
-		"python.linting.pylintEnabled": false,
-		"python.formatting.provider": "black",
-		"python.formatting.blackArgs": [
-			"--line-length",
-			"88"
-		],
 		"python.testing.pytestEnabled": true,
+		"python.testing.cwd": "${workspaceFolder}",
 		"python.testing.pytestArgs": [
-			"test"
+			"test/"
 		],
-		"python.testing.unittestEnabled": false,
 		"python.testing.autoTestDiscoverOnSaveEnabled": true,
 		"editor.formatOnSave": true,
 		"editor.codeActionsOnSave": {
@@ -43,9 +34,6 @@
 		"terminal.integrated.env.osx": {
 			"PYTHONPATH": "${workspaceFolder}"
 		},
-		"terminal.integrated.env.windows": {
-			"PYTHONPATH": "${workspaceFolder}"
-		}
 	},
 	"tasks": {
 		"version": "2.0.0",
@@ -123,9 +111,7 @@
 				"type": "shell",
 				"command": "black",
 				"args": [
-					".",
-					"--line-length",
-					"88"
+					"."
 				],
 				"group": "build",
 				"presentation": {
@@ -175,7 +161,7 @@
 		"configurations": [
 			{
 				"name": "Python: Flask",
-				"type": "python",
+				"type": "debugpy",
 				"request": "launch",
 				"module": "flask",
 				"env": {
@@ -192,7 +178,7 @@
 			},
 			{
 				"name": "Python: Current File",
-				"type": "python",
+				"type": "debugpy",
 				"request": "launch",
 				"program": "${file}",
 				"console": "integratedTerminal",
@@ -200,7 +186,7 @@
 			},
 			{
 				"name": "Python: Pytest",
-				"type": "python",
+				"type": "debugpy",
 				"request": "launch",
 				"module": "pytest",
 				"args": [
@@ -218,7 +204,6 @@
 			"ms-python.flake8",
 			"ms-python.mypy-type-checker",
 			"ms-python.black-formatter",
-			"ms-python.pylint",
 			"ms-vscode.vscode-json",
 			"redhat.vscode-yaml",
 			"ms-vscode.vscode-markdown",
