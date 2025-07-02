@@ -68,14 +68,14 @@ def test_run_tools(
             id="1",
             function=Function(
                 name="add_account",
-                arguments=json.dumps({"name": "test", "subscription_id": 1}),
+                arguments=json.dumps({"name": "test"}),
             ),
             type="function",
         )
     ]
 
     with app.app_context():
-        tool_outputs = run_tools(get_test_db, tool_calls)
+        tool_outputs = run_tools(get_test_db, 1, tool_calls)
 
     assert len(tool_outputs) == 1
     output = tool_outputs[0]

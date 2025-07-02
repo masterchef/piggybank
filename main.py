@@ -13,11 +13,13 @@ import sqlite3
 
 load_dotenv()
 
-app: Flask = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
 DB_FILE: str = "pigbank.db"
 
+app: Flask = Flask(__name__)
+app.config["DATABASE"] = DB_FILE
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
 
 SESSION_TIMEOUT_SECONDS: int = 60
@@ -131,7 +133,7 @@ def update_session_messages(session_id: str, messages: List[Dict[str, Any]]) -> 
     db.commit()
 
 
-def process_openai_response(messages: List[Dict[str, Any]]) -> Any:
+def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> Any:
     """Process OpenAI response and handle tool calls if needed."""
     db = get_db()
     response = client.chat.completions.create(
@@ -153,7 +155,7 @@ def process_openai_response(messages: List[Dict[str, Any]]) -> Any:
         messages.append(response_message.model_dump())  # Convert to dict
 
         with app.app_context():
-            tool_outputs = run_tools(db, tool_calls)
+            tool_outputs = run_tools(db, subscription_id, tool_calls)
 
         for tool_output in tool_outputs:
             messages.append(tool_output)
@@ -188,7 +190,6 @@ def agent() -> Union[Response, Tuple[Response, int]]:
     user_query: Optional[str] = data.get("query")
     session_id: Optional[str] = data.get("session_id")
     subscription_id = g.get("subscription_id")
-    log.info("Received sub_id: %s", subscription_id)
     if not user_query:
         return jsonify({"error": "Query is required"}), 400
 
@@ -200,7 +201,7 @@ def agent() -> Union[Response, Tuple[Response, int]]:
         messages.append({"role": "user", "content": user_query})
 
         # Process OpenAI response and handle tool calls
-        response_message = process_openai_response(messages)
+        response_message = process_openai_response(subscription_id, messages)
 
         # Update session with new messages
         update_session_messages(session_id, messages)
@@ -215,7 +216,6 @@ def agent() -> Union[Response, Tuple[Response, int]]:
 # ------------------ MAIN ------------------
 
 if __name__ == "__main__":
-    app.config["DATABASE"] = DB_FILE
     with app.app_context():
         cleanup_expired_sessions()  # Clean up any expired sessions on startup
     app.run(host="0.0.0.0", port=5000)

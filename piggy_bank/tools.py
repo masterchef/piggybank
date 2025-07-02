@@ -14,6 +14,8 @@ from piggy_bank.services import (
     transfer_money,
 )
 
+log = logging.getLogger(__name__)
+
 
 def get_tools() -> list[dict[str, Any]]:
     return [
@@ -29,12 +31,8 @@ def get_tools() -> list[dict[str, Any]]:
                             "type": "string",
                             "description": "The name of the account to add.",
                         },
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID for the account.",
-                        },
                     },
-                    "required": ["name", "subscription_id"],
+                    "required": ["name"],
                 },
             },
         },
@@ -43,16 +41,6 @@ def get_tools() -> list[dict[str, Any]]:
             "function": {
                 "name": "list_accounts",
                 "description": "Lists all accounts in the piggy bank.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID.",
-                        },
-                    },
-                    "required": ["subscription_id"],
-                },
             },
         },
         {
@@ -67,12 +55,8 @@ def get_tools() -> list[dict[str, Any]]:
                             "type": "string",
                             "description": "The name of the account.",
                         },
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID.",
-                        },
                     },
-                    "required": ["name", "subscription_id"],
+                    "required": ["name"],
                 },
             },
         },
@@ -88,12 +72,8 @@ def get_tools() -> list[dict[str, Any]]:
                             "type": "string",
                             "description": "The name of the account.",
                         },
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID.",
-                        },
                     },
-                    "required": ["name", "subscription_id"],
+                    "required": ["name"],
                 },
             },
         },
@@ -117,12 +97,8 @@ def get_tools() -> list[dict[str, Any]]:
                             "type": "string",
                             "description": "The reason for adding the money.",
                         },
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID.",
-                        },
                     },
-                    "required": ["name", "amount", "reason", "subscription_id"],
+                    "required": ["name", "amount", "reason"],
                 },
             },
         },
@@ -146,12 +122,8 @@ def get_tools() -> list[dict[str, Any]]:
                             "type": "string",
                             "description": "The reason for withdrawing the money.",
                         },
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID.",
-                        },
                     },
-                    "required": ["name", "amount", "reason", "subscription_id"],
+                    "required": ["name", "amount", "reason"],
                 },
             },
         },
@@ -179,17 +151,12 @@ def get_tools() -> list[dict[str, Any]]:
                             "type": "string",
                             "description": "The reason for the transfer.",
                         },
-                        "subscription_id": {
-                            "type": "integer",
-                            "description": "The subscription ID.",
-                        },
                     },
                     "required": [
                         "from_name",
                         "to_name",
                         "amount",
                         "reason",
-                        "subscription_id",
                     ],
                 },
             },
@@ -197,35 +164,38 @@ def get_tools() -> list[dict[str, Any]]:
     ]
 
 
-def run_tools(db: sqlite3.Connection, tool_calls: List[ChatCompletionMessageToolCall]) -> List[Dict[str, Any]]:
+def run_tools(
+    db: sqlite3.Connection, subscription_id: int, tool_calls: List[ChatCompletionMessageToolCall]
+) -> List[Dict[str, Any]]:
     tool_outputs = []
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         kwargs = json.loads(tool_call.function.arguments)
         # Inject subscription_id from Flask context if available
-        if hasattr(g, "subscription_id"):
-            kwargs["subscription_id"] = g.subscription_id
-        logging.info("subscription_id: %s", g.subscription_id)
+        log.info("subscription_id: %s", subscription_id)
 
         if tool_name == "add_account":
             result = add_account(
                 db=db,
                 name=str(kwargs.get("name")),
-                subscription_id=kwargs.get("subscription_id"),
+                subscription_id=subscription_id,
             )
         elif tool_name == "list_accounts":
-            result = list_accounts(db=db, subscription_id=kwargs.get("subscription_id"))
+            result = list_accounts(
+                db=db,
+                subscription_id=subscription_id,
+            )
         elif tool_name == "get_balance":
             result = get_balance(
                 db=db,
                 name=str(kwargs.get("name")),
-                subscription_id=kwargs.get("subscription_id"),
+                subscription_id=subscription_id,
             )
         elif tool_name == "get_transactions":
             result = get_transactions(
                 db=db,
                 name=str(kwargs.get("name")),
-                subscription_id=kwargs.get("subscription_id"),
+                subscription_id=subscription_id,
             )
         elif tool_name == "add_money":
             result = add_money(
@@ -233,7 +203,7 @@ def run_tools(db: sqlite3.Connection, tool_calls: List[ChatCompletionMessageTool
                 name=str(kwargs.get("name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
-                subscription_id=kwargs.get("subscription_id"),
+                subscription_id=subscription_id,
             )
         elif tool_name == "withdraw_money":
             result = withdraw_money(
@@ -241,7 +211,7 @@ def run_tools(db: sqlite3.Connection, tool_calls: List[ChatCompletionMessageTool
                 name=str(kwargs.get("name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
-                subscription_id=kwargs.get("subscription_id"),
+                subscription_id=subscription_id,
             )
         elif tool_name == "transfer_money":
             result = transfer_money(
@@ -250,7 +220,7 @@ def run_tools(db: sqlite3.Connection, tool_calls: List[ChatCompletionMessageTool
                 to_name=str(kwargs.get("to_name")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
-                subscription_id=kwargs.get("subscription_id"),
+                subscription_id=subscription_id,
             )
         else:
             raise ValueError(f"Unknown tool: {tool_name}")
