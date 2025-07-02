@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 def test_add_and_list_account(get_test_db):
     services.add_account(get_test_db, "test_account", 1)
-    result = services.list_accounts(get_test_db, 1)
+    result = services.get_accounts(get_test_db, 1)
     assert result["error"] is None
     assert "accounts" in result["response"]
     assert any(acc["name"] == "test_account" for acc in result["response"]["accounts"])

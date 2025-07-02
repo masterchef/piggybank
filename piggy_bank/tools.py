@@ -2,11 +2,10 @@ import json
 import logging
 import sqlite3
 from typing import Any, Dict, List
-from flask import g
 from openai.types.chat import ChatCompletionMessageToolCall
 from piggy_bank.services import (
     add_account,
-    list_accounts,
+    get_accounts,
     get_balance,
     get_transactions,
     add_money,
@@ -36,13 +35,14 @@ def get_tools() -> list[dict[str, Any]]:
                 },
             },
         },
-        {
-            "type": "function",
-            "function": {
-                "name": "list_accounts",
-                "description": "Lists all accounts in the piggy bank.",
-            },
-        },
+        # {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_accounts",
+        #         "description": """Gets all account information,
+        #           including account_id, and name in the piggy bank.""",
+        #     },
+        # },
         {
             "type": "function",
             "function": {
@@ -180,11 +180,11 @@ def run_tools(
                 name=str(kwargs.get("name")),
                 subscription_id=subscription_id,
             )
-        elif tool_name == "list_accounts":
-            result = list_accounts(
-                db=db,
-                subscription_id=subscription_id,
-            )
+        # elif tool_name == "get_accounts":
+        #     result = get_accounts(
+        #         db=db,
+        #         subscription_id=subscription_id,
+        #     )
         elif tool_name == "get_balance":
             result = get_balance(
                 db=db,

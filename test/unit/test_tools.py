@@ -19,7 +19,7 @@ def test_get_tools():
 
 
 @patch("piggy_bank.tools.add_account")
-@patch("piggy_bank.tools.list_accounts")
+@patch("piggy_bank.tools.get_accounts")
 @patch("piggy_bank.tools.get_balance")
 @patch("piggy_bank.tools.get_transactions")
 @patch("piggy_bank.tools.add_money")
@@ -31,7 +31,7 @@ def test_run_tools(
     mock_add_money,
     mock_get_transactions,
     mock_get_balance,
-    mock_list_accounts,
+    mock_get_accounts,
     mock_add_account,
     app: Flask,
     get_test_db: sqlite3.Connection,
@@ -41,7 +41,7 @@ def test_run_tools(
         "response": {"message": "Account added"},
         "error": None,
     }
-    mock_list_accounts.return_value = {
+    mock_get_accounts.return_value = {
         "response": {"accounts": ["acc1", "acc2"]},
         "error": None,
     }

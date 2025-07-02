@@ -9,6 +9,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from piggy_bank.db import init_db
 from piggy_bank.tools import get_tools, run_tools
+from piggy_bank.services import get_accounts
 import sqlite3
 
 load_dotenv()
@@ -106,12 +107,29 @@ def get_or_create_session(
     # Create a new session
     new_session_id = str(uuid.uuid4())
     log.info("Creating new session: %s", new_session_id)
+
+    # Get current accounts for this subscription
+    accounts_result = get_accounts(db, subscription_id)
+    accounts_info = ""
+    if accounts_result["error"] is None and accounts_result["response"]["accounts"]:
+        accounts_list = []
+        for account in accounts_result["response"]["accounts"]:
+            accounts_list.append(f"- {account['name']}: ${account['balance']:.2f} (ID: {account['id']})")
+        accounts_info = "\n\nCurrent accounts:\n" + "\n".join(accounts_list)
+    else:
+        accounts_info = "\n\nNo accounts currently exist."
+
     messages = [
         {
             "role": "system",
-            "content": """You are a helpful piggy bank assistant. 
-            You have access to a set of tools to manage accounts.
-            When a user asks for multiple pieces of information, you can call multiple tools in parallel.""",
+            "content": f"""You are a helpful piggy bank assistant that immediately executes all requested operations.
+            You have access to a set of tools to manage accounts, and you can call multiple tools in parallel.
+
+            IMPORTANT: Do NOT ask for verification or user approval - execute all requested actions immediately.
+            When given multi-step commands (like "add money and transfer"), execute ALL steps in the same response.
+            Do NOT plan or explain what you will do - just do it immediately.
+            
+            If money was added, transferred or withdrawn, you should always return the updated balance after all operations are complete.{accounts_info}""",
         }
     ]
 
@@ -140,7 +158,6 @@ def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]
         model="gpt-4-turbo",
         messages=messages,  # type: ignore
         tools=get_tools(),  # type: ignore
-        parallel_tool_calls=True,
     )
     response_message = response.choices[0].message
     tool_calls = response_message.tool_calls
