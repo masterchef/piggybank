@@ -65,13 +65,14 @@ Authorization: Bearer <your_subscription_token>
 
 ### SIRI Integration
 
-1. Save this shortcut to your device https://www.icloud.com/shortcuts/070d9eef36134caa8f70fa988407f142
+1. Save this shortcut to your device https://www.icloud.com/shortcuts/27ab3b09cd3441b18337ad3a0299890e
+2. Name it something like 'Piggy Bank'
 2. Edit the shortcut to add your authentication token in the "Get contents of" step:
-   - Click `Show More`
-   - Edit the Value of Header `Authorization`, it should say 'Bearer <your token>`
-   - Replace `<your token>` with your token so it looks like: `Bearer my_token_232j23hk23j4h2`
-3. Click play to test the shortcut.
-
+   - Click `Show More`.
+   - Set the auth_token value in the Text box.
+3. Click play to test the shortcut with some prompt, i.e. `Hi!`
+4. It should respond with a greeting.
+5. To continue the chat you will need to reprompt `siri piggy bank` and then your prompt.
 
 ### Main Endpoint
 
