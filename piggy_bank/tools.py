@@ -51,12 +51,12 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the account.",
+                        "account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account.",
                         },
                     },
-                    "required": ["name"],
+                    "required": ["account_id"],
                 },
             },
         },
@@ -68,12 +68,12 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the account.",
+                        "account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account.",
                         },
                     },
-                    "required": ["name"],
+                    "required": ["account_id"],
                 },
             },
         },
@@ -85,9 +85,9 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the account.",
+                        "account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account.",
                         },
                         "amount": {
                             "type": "number",
@@ -98,7 +98,7 @@ def get_tools() -> list[dict[str, Any]]:
                             "description": "The reason for adding the money.",
                         },
                     },
-                    "required": ["name", "amount", "reason"],
+                    "required": ["account_id", "amount", "reason"],
                 },
             },
         },
@@ -110,9 +110,9 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the account.",
+                        "account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account.",
                         },
                         "amount": {
                             "type": "number",
@@ -123,7 +123,7 @@ def get_tools() -> list[dict[str, Any]]:
                             "description": "The reason for withdrawing the money.",
                         },
                     },
-                    "required": ["name", "amount", "reason"],
+                    "required": ["account_id", "amount", "reason"],
                 },
             },
         },
@@ -135,13 +135,13 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "from_name": {
-                            "type": "string",
-                            "description": "The name of the account to transfer from.",
+                        "from_account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account to transfer from.",
                         },
-                        "to_name": {
-                            "type": "string",
-                            "description": "The name of the account to transfer to.",
+                        "to_account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account to transfer to.",
                         },
                         "amount": {
                             "type": "number",
@@ -153,8 +153,8 @@ def get_tools() -> list[dict[str, Any]]:
                         },
                     },
                     "required": [
-                        "from_name",
-                        "to_name",
+                        "from_account_id",
+                        "to_account_id",
                         "amount",
                         "reason",
                     ],
@@ -188,19 +188,19 @@ def run_tools(
         elif tool_name == "get_balance":
             result = get_balance(
                 db=db,
-                name=str(kwargs.get("name")),
+                account_id=int(kwargs.get("account_id")),
                 subscription_id=subscription_id,
             )
         elif tool_name == "get_transactions":
             result = get_transactions(
                 db=db,
-                name=str(kwargs.get("name")),
+                account_id=int(kwargs.get("account_id")),
                 subscription_id=subscription_id,
             )
         elif tool_name == "add_money":
             result = add_money(
                 db=db,
-                name=str(kwargs.get("name")),
+                account_id=int(kwargs.get("account_id")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
                 subscription_id=subscription_id,
@@ -208,7 +208,7 @@ def run_tools(
         elif tool_name == "withdraw_money":
             result = withdraw_money(
                 db=db,
-                name=str(kwargs.get("name")),
+                account_id=int(kwargs.get("account_id")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
                 subscription_id=subscription_id,
@@ -216,8 +216,8 @@ def run_tools(
         elif tool_name == "transfer_money":
             result = transfer_money(
                 db=db,
-                from_name=str(kwargs.get("from_name")),
-                to_name=str(kwargs.get("to_name")),
+                from_account_id=int(kwargs.get("from_account_id")),
+                to_account_id=int(kwargs.get("to_account_id")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
                 subscription_id=subscription_id,

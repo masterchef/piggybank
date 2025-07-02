@@ -54,6 +54,21 @@ def add_subscription(get_test_db, family_name="test_family", auth_token="test_to
     return cur.fetchone()[0]
 
 
+# Helper to add an account and return its ID
+def add_account(get_test_db, name, subscription_id):
+    from piggy_bank import services
+    result = services.add_account(get_test_db, name, subscription_id)
+    if result["error"] is None:
+        # Get the account ID
+        account = get_test_db.execute(
+            "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
+            (name, subscription_id),
+        ).fetchone()
+        if account:
+            return account["id"]
+    raise ValueError(f"Failed to create account {name}")
+
+
 @pytest.fixture(autouse=True)
 def clear_db(app: Flask):
     """Clear all tables in the database after each test."""

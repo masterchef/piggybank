@@ -1,6 +1,5 @@
 import sqlite3
 import logging
-from piggy_bank.utils import normalize_account_name
 from typing import TypedDict, Optional
 from datetime import datetime
 
@@ -15,7 +14,6 @@ class ServiceResult(TypedDict):
 
 
 def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
-    name = normalize_account_name(name)
     try:
         db.execute(
             "INSERT INTO accounts (name, subscription_id) VALUES (?, ?)",
@@ -52,27 +50,26 @@ def list_accounts(db: sqlite3.Connection, subscription_id: int) -> ServiceResult
     return {"response": {"accounts": accounts}, "error": None}
 
 
-def get_balance(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
-    name = normalize_account_name(name)
+def get_balance(db: sqlite3.Connection, account_id: int, subscription_id: int) -> ServiceResult:
+    # Verify account belongs to subscription
     account = db.execute(
-        "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
-        (name, subscription_id),
+        "SELECT id FROM accounts WHERE id = ? AND subscription_id = ?",
+        (account_id, subscription_id),
     ).fetchone()
     if not account:
         log.warning(
             "Attempted to get balance for non-existent account: %s in subscription %s",
-            name,
+            account_id,
             subscription_id,
         )
         return {"response": {}, "error": "Account not found"}
-    account_id = account["id"]
+    
     balance_row = db.execute(
         "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
         (account_id,),
     ).fetchone()
     log.info(
-        'Retrieved balance for account "%s" (id %s) in subscription %s: %s',
-        name,
+        'Retrieved balance for account id %s in subscription %s: %s',
         account_id,
         subscription_id,
         balance_row["balance"],
@@ -80,20 +77,20 @@ def get_balance(db: sqlite3.Connection, name: str, subscription_id: int) -> Serv
     return {"response": {"balance": balance_row["balance"]}, "error": None}
 
 
-def get_transactions(db: sqlite3.Connection, name: str, subscription_id: int, last_n: int = 5) -> ServiceResult:
-    name = normalize_account_name(name)
+def get_transactions(db: sqlite3.Connection, account_id: int, subscription_id: int, last_n: int = 5) -> ServiceResult:
+    # Verify account belongs to subscription
     account = db.execute(
-        "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
-        (name, subscription_id),
+        "SELECT id FROM accounts WHERE id = ? AND subscription_id = ?",
+        (account_id, subscription_id),
     ).fetchone()
     if not account:
         log.warning(
             "Attempted to get transactions for non-existent account: %s in subscription %s",
-            name,
+            account_id,
             subscription_id,
         )
         return {"response": {}, "error": "Account not found"}
-    account_id = account["id"]
+    
     transactions = db.execute(
         """
         SELECT id, amount, reason, timestamp
@@ -114,9 +111,9 @@ def get_transactions(db: sqlite3.Connection, name: str, subscription_id: int, la
         for row in transactions
     ]
     log.info(
-        'Retrieved %d transactions for account "%s" in subscription %s',
+        'Retrieved %d transactions for account id %s in subscription %s',
         len(transaction_list),
-        name,
+        account_id,
         subscription_id,
     )
     return {
@@ -128,52 +125,51 @@ def get_transactions(db: sqlite3.Connection, name: str, subscription_id: int, la
     }
 
 
-def add_money(db: sqlite3.Connection, name: str, amount: float, reason: str, subscription_id: int) -> ServiceResult:
-    name = normalize_account_name(name)
+def add_money(db: sqlite3.Connection, account_id: int, amount: float, reason: str, subscription_id: int) -> ServiceResult:
+    # Verify account belongs to subscription
     account = db.execute(
-        "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
-        (name, subscription_id),
+        "SELECT id FROM accounts WHERE id = ? AND subscription_id = ?",
+        (account_id, subscription_id),
     ).fetchone()
     if not account:
         log.warning(
             "Attempted to add money to non-existent account: %s in subscription %s",
-            name,
+            account_id,
             subscription_id,
         )
         return {"response": {}, "error": "Account not found"}
-    account_id = account["id"]
+    
     db.execute(
         "INSERT INTO transactions (account_id, amount, reason) VALUES (?, ?, ?)",
         (account_id, amount, reason),
     )
     db.commit()
     log.info(
-        'Added %s to account "%s" (id %s) for reason: %s in subscription %s',
+        'Added %s to account id %s for reason: %s in subscription %s',
         amount,
-        name,
         account_id,
         reason,
         subscription_id,
     )
-    return get_balance(db, name, subscription_id)
+    return get_balance(db, account_id, subscription_id)
 
 
 def withdraw_money(
-    db: sqlite3.Connection, name: str, amount: float, reason: str, subscription_id: int
+    db: sqlite3.Connection, account_id: int, amount: float, reason: str, subscription_id: int
 ) -> ServiceResult:
-    name = normalize_account_name(name)
+    # Verify account belongs to subscription
     account = db.execute(
-        "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
-        (name, subscription_id),
+        "SELECT id FROM accounts WHERE id = ? AND subscription_id = ?",
+        (account_id, subscription_id),
     ).fetchone()
     if not account:
         log.warning(
             "Attempted to withdraw money from non-existent account: %s in subscription %s",
-            name,
+            account_id,
             subscription_id,
         )
         return {"response": {}, "error": "Account not found"}
-    account_id = account["id"]
+    
     balance_row = db.execute(
         "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
         (account_id,),
@@ -181,9 +177,9 @@ def withdraw_money(
     current_balance = balance_row["balance"]
     if current_balance < amount:
         log.warning(
-            'Insufficient funds for withdrawal from account "%s" in subscription %s. '
+            'Insufficient funds for withdrawal from account id %s in subscription %s. '
             "Current balance: %s, requested amount: %s",
-            name,
+            account_id,
             subscription_id,
             current_balance,
             amount,
@@ -195,50 +191,52 @@ def withdraw_money(
     )
     db.commit()
     log.info(
-        'Withdrew %s from account "%s" (id %s) ' "for reason: %s in subscription %s",
+        'Withdrew %s from account id %s for reason: %s in subscription %s',
         amount,
-        name,
         account_id,
         reason,
         subscription_id,
     )
-    return get_balance(db, name, subscription_id)
+    return get_balance(db, account_id, subscription_id)
 
 
 def transfer_money(
     db: sqlite3.Connection,
-    from_name: str,
-    to_name: str,
+    from_account_id: int,
+    to_account_id: int,
     amount: float,
     reason: str,
     subscription_id: int,
 ) -> ServiceResult:
-    from_name = normalize_account_name(from_name)
-    to_name = normalize_account_name(to_name)
     try:
         db.execute("BEGIN")
+        
+        # Verify both accounts belong to subscription
         from_account = db.execute(
-            "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
-            (from_name, subscription_id),
+            "SELECT id, name FROM accounts WHERE id = ? AND subscription_id = ?",
+            (from_account_id, subscription_id),
         ).fetchone()
         to_account = db.execute(
-            "SELECT id FROM accounts WHERE name = ? AND subscription_id = ?",
-            (to_name, subscription_id),
+            "SELECT id, name FROM accounts WHERE id = ? AND subscription_id = ?",
+            (to_account_id, subscription_id),
         ).fetchone()
+        
         if not from_account or not to_account:
             db.rollback()
             log.warning(
                 "Transfer failed: one or both accounts not found in subscription %s. From: %s, To: %s",
                 subscription_id,
-                from_name,
-                to_name,
+                from_account_id,
+                to_account_id,
             )
             return {
                 "response": {},
                 "error": "One or both accounts not found",
             }
-        from_account_id = from_account["id"]
-        to_account_id = to_account["id"]
+        
+        from_name = from_account["name"]
+        to_name = to_account["name"]
+        
         balance_row = db.execute(
             "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
             (from_account_id,),
@@ -246,13 +244,14 @@ def transfer_money(
         if balance_row["balance"] < amount:
             db.rollback()
             log.warning(
-                "Transfer failed: insufficient funds in account %s in " "subscription %s. Balance: %s, Amount: %s",
-                from_name,
+                "Transfer failed: insufficient funds in account %s in subscription %s. Balance: %s, Amount: %s",
+                from_account_id,
                 subscription_id,
                 balance_row["balance"],
                 amount,
             )
             return {"response": {}, "error": "Insufficient funds"}
+        
         db.execute(
             "INSERT INTO transactions (account_id, amount, reason) VALUES (?, ?, ?)",
             (from_account_id, -amount, f"Transfer to {to_name}: {reason}"),
@@ -263,11 +262,9 @@ def transfer_money(
         )
         db.commit()
         log.info(
-            "Transferred %s from %s (id %s) to %s (id %s) in subscription %s",
+            "Transferred %s from account id %s to account id %s in subscription %s",
             amount,
-            from_name,
             from_account_id,
-            to_name,
             to_account_id,
             subscription_id,
         )
