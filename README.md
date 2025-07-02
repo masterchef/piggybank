@@ -1,6 +1,8 @@
-# Piggy Bank AI Assistant API
+# Piggy Bank AI Assistant
 
-An AI-powered Flask-based API for managing personal accounts and transactions using OpenAI's GPT model with function calling capabilities.
+A modern version of the most basic finance tool, the piggy bank. I built this with and for my kids because I don't have quarters around me to pay/bribe them to do chores. My IOUs finally lost the charm and they stopped caring about doing extra work. Now, I can say 'Siri piggy bank, add fifty cents to vivian's account for taking out the trash' and she "gets" the money right away. They love following up with 'Siri piggy bank, how much money does vivians account have', and get the satisfaction of it being more!
+
+It's the easiest and most fun way to teach kids about money, savings and work value. 
 
 ## Features
 
@@ -10,33 +12,28 @@ An AI-powered Flask-based API for managing personal accounts and transactions us
 - **Account Management**: Create and manage multiple accounts per subscription
 - **Transaction Operations**: Add money, withdraw money, and transfer between accounts
 - **Transaction History**: View detailed transaction records
-- **Account Name Normalization**: Automatic name standardization (e.g., "victor" → "viktor")
 - **Parallel Tool Execution**: AI can execute multiple operations simultaneously
 
 ## Setup
 
-1. Create a virtual environment:
+1. Run the setup script:
    ```bash
-   python -m venv venv
+   chmod +x setup.sh
+   ./setup.sh
    ```
+   This will automatically:
+   - Create a virtual environment (if it doesn't exist)
+   - Activate the virtual environment
+   - Upgrade pip
+   - Install all required dependencies
 
-2. Activate the virtual environment:
-   ```bash
-   # On Linux/Mac:
-   source venv/bin/activate
-   
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Set up environment variables:
+2. Set up environment variables:
    Create a `.env` file in the project root with your OpenAI API key:
    ```
    OPEN_AI_KEY=your_openai_api_key_here
    ```
 
-5. Run the application:
+3. Run the application:
    ```bash
    python main.py
    ```
