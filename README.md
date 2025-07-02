@@ -1,6 +1,6 @@
 # Piggy Bank AI Assistant
 
-A modern version of the most basic finance tool, the piggy bank. I built this with and for my kids because I don't have quarters around me to pay/bribe them to do chores. My IOUs finally lost the charm and they stopped caring about doing extra work. Now, I can say 'Siri piggy bank, add fifty cents to vivian's account for taking out the trash' and she "gets" the money right away. They love following up with 'Siri piggy bank, how much money does vivians account have', and get the satisfaction of it being more!
+A modern version of the most basic finance tool, the piggy bank. I built this with and for my kids because I don't have quarters around me to pay/bribe them to do chores. My IOUs finally lost the charm and they stopped caring about doing extra work. Now, I can say 'Siri piggy bank, add fifty cents to Jimmy's account for taking out the trash' and he "gets" the money right away. They love following up with 'Siri piggy bank, how much money does Jimmy have', and get the satisfaction of it being more!
 
 It's the easiest and most fun way to teach kids about money, savings and work value. 
 
