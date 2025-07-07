@@ -5,12 +5,47 @@ import uuid
 import json
 from typing import Optional, Dict, Any, Union, Tuple, List
 from flask import Flask, request, jsonify, g, Response
-from openai import OpenAI
 from dotenv import load_dotenv
 from piggy_bank.db import init_db
 from piggy_bank.tools import get_tools, run_tools
+from piggy_bank.crewai_tools import create_crewai_tools
 from piggy_bank.services import get_accounts
 import sqlite3
+
+# CrewAI imports (will be replaced with actual CrewAI once installed)
+try:
+    from crewai import Agent, Task, Crew
+    CREWAI_AVAILABLE = True
+except ImportError:
+    # Fallback for development without CrewAI installed
+    CREWAI_AVAILABLE = False
+    
+    class Agent:
+        def __init__(self, role, goal, backstory, tools=None, verbose=False, llm=None):
+            self.role = role
+            self.goal = goal
+            self.backstory = backstory
+            self.tools = tools or []
+            self.verbose = verbose
+            self.llm = llm
+
+    class Task:
+        def __init__(self, description, agent, expected_output=None):
+            self.description = description
+            self.agent = agent
+            self.expected_output = expected_output
+
+    class Crew:
+        def __init__(self, agents, tasks, verbose=False):
+            self.agents = agents
+            self.tasks = tasks
+            self.verbose = verbose
+        
+        def kickoff(self, inputs=None):
+            # Mock implementation for testing
+            return type('CrewOutput', (), {'raw': 'Mock response from CrewAI'})()
+
+    print("Warning: CrewAI not available, using mock implementation")
 
 load_dotenv()
 
@@ -21,9 +56,11 @@ app.config["DATABASE"] = DB_FILE
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
-client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
 
 SESSION_TIMEOUT_SECONDS: int = 60
+
+# CrewAI client initialization
+crew = None  # Will be initialized in create_piggy_bank_crew()
 
 
 def get_db() -> sqlite3.Connection:
@@ -63,7 +100,97 @@ def check_auth() -> Optional[Tuple[Response, int]]:
     return None
 
 
-# ------------------ OPENAI HELPERS ------------------
+# ------------------ CREWAI HELPERS ------------------
+
+
+def create_piggy_bank_crew():
+    """Create and return a CrewAI crew for piggy bank operations."""
+    global crew
+    if crew is not None:
+        return crew
+    
+    # Create CrewAI tools with proper context
+    def get_current_db():
+        from flask import g
+        return get_db()
+    
+    def get_current_subscription_id():
+        from flask import g
+        return g.get("subscription_id")
+    
+    crewai_tools = create_crewai_tools(get_current_db, get_current_subscription_id)
+    
+    # Create piggy bank assistant agent
+    piggy_bank_agent = Agent(
+        role="Piggy Bank Assistant",
+        goal="Help users manage their piggy bank accounts efficiently by executing requested operations immediately",
+        backstory="""You are a helpful piggy bank assistant that immediately executes all requested operations.
+        You have access to tools to manage accounts, add/withdraw money, transfer funds, and check balances.
+        When given commands, execute them immediately without asking for confirmation.
+        Always provide clear feedback about the operations performed.""",
+        tools=crewai_tools,
+        verbose=True
+    )
+    
+    # Create crew with the agent
+    crew = Crew(
+        agents=[piggy_bank_agent],
+        tasks=[],  # Tasks will be created dynamically
+        verbose=True
+    )
+    
+    return crew
+
+
+def process_crewai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> Any:
+    """Process CrewAI response and handle tool calls if needed."""
+    try:
+        # Get the user's latest message
+        user_message = messages[-1]["content"] if messages else ""
+        
+        # Get or create crew
+        current_crew = create_piggy_bank_crew()
+        
+        # Create a dynamic task for this specific user query
+        task = Task(
+            description=f"Process this user request: {user_message}",
+            agent=current_crew.agents[0],
+            expected_output="A helpful response with any necessary banking operations completed"
+        )
+        
+        # Update crew with the current task
+        current_crew.tasks = [task]
+        
+        # Execute the crew
+        result = current_crew.kickoff(inputs={"user_query": user_message})
+        
+        # Create a mock response object similar to OpenAI's structure
+        response_content = result.raw if hasattr(result, 'raw') else str(result)
+        
+        # Return a mock response object that matches the expected interface
+        class MockResponse:
+            def __init__(self, content):
+                self.content = content
+            
+            def model_dump(self):
+                return {"role": "assistant", "content": self.content}
+        
+        return MockResponse(response_content)
+        
+    except Exception as e:
+        log.error("Error in CrewAI execution: %s", e)
+        # Return a fallback response
+        class MockResponse:
+            def __init__(self, content):
+                self.content = content
+            
+            def model_dump(self):
+                return {"role": "assistant", "content": self.content}
+        
+        return MockResponse(f"I apologize, but I encountered an error processing your request: {str(e)}")
+
+
+# ------------------ SESSION HELPERS ------------------
 
 
 def get_or_create_session(
@@ -151,42 +278,6 @@ def update_session_messages(session_id: str, messages: List[Dict[str, Any]]) -> 
     db.commit()
 
 
-def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> Any:
-    """Process OpenAI response and handle tool calls if needed."""
-    db = get_db()
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=messages,  # type: ignore
-        tools=get_tools(),  # type: ignore
-    )
-    response_message = response.choices[0].message
-    tool_calls = response_message.tool_calls
-
-    log.debug("Received response: %s", response_message.content)
-
-    if tool_calls:
-        log.info(
-            "Tool calls requested: %s",
-            [f"{tc.function.name}({tc.function.arguments})" for tc in tool_calls],
-        )
-        messages.append(response_message.model_dump())  # Convert to dict
-
-        with app.app_context():
-            tool_outputs = run_tools(db, subscription_id, tool_calls)
-
-        for tool_output in tool_outputs:
-            messages.append(tool_output)
-
-        second_response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=messages,  # type: ignore
-        )
-        response_message = second_response.choices[0].message
-
-    messages.append(response_message.model_dump())  # Convert to dict
-    return response_message
-
-
 def cleanup_expired_sessions() -> None:
     """Remove expired sessions from the database."""
     cutoff_time = time.time() - SESSION_TIMEOUT_SECONDS
@@ -217,8 +308,8 @@ def agent() -> Union[Response, Tuple[Response, int]]:
         # Add user query to conversation
         messages.append({"role": "user", "content": user_query})
 
-        # Process OpenAI response and handle tool calls
-        response_message = process_openai_response(subscription_id, messages)
+        # Process CrewAI response and handle tool calls
+        response_message = process_crewai_response(subscription_id, messages)
 
         # Update session with new messages
         update_session_messages(session_id, messages)
@@ -226,7 +317,7 @@ def agent() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"response": response_message.content, "session_id": session_id})
 
     except Exception as e:
-        log.error("Error in OpenAI integration: %s", e)
+        log.error("Error in CrewAI integration: %s", e)
         return jsonify({"error": str(e)}), 500
 
 

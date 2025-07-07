@@ -28,9 +28,9 @@ It's the easiest and most fun way to teach kids about money, savings and work va
    - Install all required dependencies
 
 2. Set up environment variables:
-   Create a `.env` file in the project root with your OpenAI API key:
+   Create a `.env` file in the project root with your CrewAI configuration:
    ```
-   OPEN_AI_KEY=your_openai_api_key_here
+   CREWAI_API_KEY=your_api_key_here
    ```
 
 3. Run the application:
@@ -157,8 +157,8 @@ The database file (`pigbank.db`) is created automatically when the application s
 ## Technical Details
 
 ### AI Integration
-- Uses OpenAI's GPT-4 Turbo model for natural language processing
-- Implements function calling to execute financial operations
+- Uses CrewAI framework for AI agent-based natural language processing
+- Implements agent-based approach to execute financial operations
 - Supports parallel tool execution for complex multi-step requests
 - Maintains conversation context through session management
 
