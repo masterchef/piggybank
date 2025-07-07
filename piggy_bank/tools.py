@@ -9,6 +9,7 @@ from piggy_bank.services import (
     add_money,
     withdraw_money,
     transfer_money,
+    remove_account,
 )
 
 log = logging.getLogger(__name__)
@@ -157,6 +158,23 @@ def get_tools() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "remove_account",
+                "description": "Removes an account and all its associated transactions. Account must have zero balance before removal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "account_id": {
+                            "type": "integer",
+                            "description": "The ID of the account to remove.",
+                        },
+                    },
+                    "required": ["account_id"],
+                },
+            },
+        },
     ]
 
 
@@ -211,6 +229,12 @@ def run_tools(
                 to_account_id=int(kwargs.get("to_account_id")),
                 amount=float(kwargs.get("amount") or 0.0),
                 reason=str(kwargs.get("reason")),
+                subscription_id=subscription_id,
+            )
+        elif tool_name == "remove_account":
+            result = remove_account(
+                db=db,
+                account_id=int(kwargs.get("account_id")),
                 subscription_id=subscription_id,
             )
         else:
