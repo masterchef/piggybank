@@ -30,8 +30,10 @@ It's the easiest and most fun way to teach kids about money, savings and work va
 2. Set up environment variables:
    Create a `.env` file in the project root with your CrewAI configuration:
    ```
-   CREWAI_API_KEY=your_api_key_here
+   CREWAI_API_KEY=your_actual_api_key_here
    ```
+   
+   **Note:** You need a valid CrewAI API key for the application to work properly. The application no longer uses mock implementations and requires real API access.
 
 3. Run the application:
    ```bash
@@ -158,9 +160,10 @@ The database file (`pigbank.db`) is created automatically when the application s
 
 ### AI Integration
 - Uses CrewAI framework for AI agent-based natural language processing
-- Implements agent-based approach to execute financial operations
+- Implements agent-based approach to execute financial operations with real API calls
 - Supports parallel tool execution for complex multi-step requests
 - Maintains conversation context through session management
+- **Requires valid CREWAI_API_KEY for full functionality**
 
 ### Authentication & Authorization
 - Subscription-based multi-tenant architecture
