@@ -95,7 +95,8 @@ def create_piggy_bank_crew():
         backstory="""You are a helpful piggy bank assistant that immediately executes all requested operations.
         You have access to tools to manage accounts, add/withdraw money, transfer funds, and check balances.
         When given commands, execute them immediately without asking for confirmation.
-        Always provide clear feedback about the operations performed.""",
+        Always provide clear feedback about the operations performed.
+        Pay attention to the conversation history to understand context and references to previous operations.""",
         tools=crewai_tools,
         verbose=True
     )
@@ -113,6 +114,21 @@ def create_piggy_bank_crew():
 def process_crewai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> Any:
     """Process CrewAI response using actual CrewAI agent execution."""
     try:
+        # Build conversation context from all messages
+        conversation_context = ""
+        if len(messages) > 1:  # More than just the current user message
+            conversation_context = "Previous conversation:\n"
+            for i, msg in enumerate(messages[:-1]):  # All messages except the last one
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                if role == "system":
+                    conversation_context += f"System: {content}\n"
+                elif role == "user":
+                    conversation_context += f"User: {content}\n"
+                elif role == "assistant":
+                    conversation_context += f"Assistant: {content}\n"
+            conversation_context += "\n"
+        
         # Get the user's latest message
         user_message = messages[-1]["content"] if messages else ""
         
@@ -121,9 +137,15 @@ def process_crewai_response(subscription_id: int, messages: List[Dict[str, Any]]
         # Get or create crew
         current_crew = create_piggy_bank_crew()
         
-        # Create a task for the user request
+        # Create a task for the user request with conversation context
+        task_description = ""
+        if conversation_context:
+            task_description = f"{conversation_context}Current request: {user_message}"
+        else:
+            task_description = f"Execute the following banking operation: {user_message}"
+        
         task = Task(
-            description=f"Execute the following banking operation: {user_message}",
+            description=task_description,
             agent=current_crew.agents[0],  # Use the piggy bank agent
             expected_output="A clear response about the completed banking operation"
         )
@@ -282,6 +304,9 @@ def agent() -> Union[Response, Tuple[Response, int]]:
 
         # Process CrewAI response and handle tool calls
         response_message = process_crewai_response(subscription_id, messages)
+
+        # Add assistant response to conversation history
+        messages.append({"role": "assistant", "content": response_message.content})
 
         # Update session with new messages
         update_session_messages(session_id, messages)
