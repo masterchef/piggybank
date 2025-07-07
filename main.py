@@ -12,40 +12,8 @@ from piggy_bank.crewai_tools import create_crewai_tools
 from piggy_bank.services import get_accounts
 import sqlite3
 
-# CrewAI imports (will be replaced with actual CrewAI once installed)
-try:
-    from crewai import Agent, Task, Crew
-    CREWAI_AVAILABLE = True
-except ImportError:
-    # Fallback for development without CrewAI installed
-    CREWAI_AVAILABLE = False
-    
-    class Agent:
-        def __init__(self, role, goal, backstory, tools=None, verbose=False, llm=None):
-            self.role = role
-            self.goal = goal
-            self.backstory = backstory
-            self.tools = tools or []
-            self.verbose = verbose
-            self.llm = llm
-
-    class Task:
-        def __init__(self, description, agent, expected_output=None):
-            self.description = description
-            self.agent = agent
-            self.expected_output = expected_output
-
-    class Crew:
-        def __init__(self, agents, tasks, verbose=False):
-            self.agents = agents
-            self.tasks = tasks
-            self.verbose = verbose
-        
-        def kickoff(self, inputs=None):
-            # Mock implementation for testing
-            return type('CrewOutput', (), {'raw': 'Mock response from CrewAI'})()
-
-    print("Warning: CrewAI not available, using mock implementation")
+# CrewAI imports
+from crewai import Agent, Task, Crew
 
 load_dotenv()
 
@@ -143,7 +111,7 @@ def create_piggy_bank_crew():
 
 
 def process_crewai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> Any:
-    """Process CrewAI response and handle tool calls if needed."""
+    """Process CrewAI response using actual CrewAI agent execution."""
     try:
         # Get the user's latest message
         user_message = messages[-1]["content"] if messages else ""
@@ -153,151 +121,45 @@ def process_crewai_response(subscription_id: int, messages: List[Dict[str, Any]]
         # Get or create crew
         current_crew = create_piggy_bank_crew()
         
-        # For mock implementation, we'll simulate tool execution based on user message
-        response_content = simulate_crewai_execution(user_message, subscription_id)
+        # Create a task for the user request
+        task = Task(
+            description=f"Execute the following banking operation: {user_message}",
+            agent=current_crew.agents[0],  # Use the piggy bank agent
+            expected_output="A clear response about the completed banking operation"
+        )
         
-        # Create a mock response object similar to OpenAI's structure
-        class MockResponse:
+        # Update crew with the new task
+        current_crew.tasks = [task]
+        
+        # Execute the crew
+        result = current_crew.kickoff()
+        
+        # Extract response content
+        response_content = result.raw if hasattr(result, 'raw') else str(result)
+        
+        # Create a response object
+        class CrewResponse:
             def __init__(self, content):
                 self.content = content
             
             def model_dump(self):
                 return {"role": "assistant", "content": self.content}
         
-        return MockResponse(response_content)
+        return CrewResponse(response_content)
         
     except Exception as e:
         log.error("Error in CrewAI execution: %s", e)
         # Return a fallback response
-        class MockResponse:
+        class CrewResponse:
             def __init__(self, content):
                 self.content = content
             
             def model_dump(self):
                 return {"role": "assistant", "content": self.content}
         
-        return MockResponse(f"I apologize, but I encountered an error processing your request: {str(e)}")
+        return CrewResponse(f"I apologize, but I encountered an error processing your request: {str(e)}")
 
 
-def simulate_crewai_execution(user_message: str, subscription_id: int) -> str:
-    """Simulate CrewAI execution by parsing user intent and executing appropriate tools."""
-    user_lower = user_message.lower()
-    
-    try:
-        db = get_db()
-        
-        log.info(f"Processing message: '{user_message}', lower: '{user_lower}'")
-        
-        # Create account
-        if "create" in user_lower and "account" in user_lower:
-            # Extract account name - simplified parsing
-            account_name = "savings"  # default
-            
-            # Look for common account types first
-            words = user_message.lower().split()
-            types = ["emergency", "vacation", "retirement", "checking", "savings"]
-            for account_type in types:
-                if account_type in words:
-                    account_name = account_type
-                    break
-            
-            # Look for "called X" or "named X" patterns
-            import re
-            called_match = re.search(r'(?:called|named)\s+([\w\s]+?)(?:\s+(?:for|account)|$)', user_message, re.IGNORECASE)
-            if called_match:
-                account_name = called_match.group(1).strip()
-            
-            # Look for quoted names
-            quote_match = re.search(r'["\']([^"\']+)["\']', user_message)
-            if quote_match:
-                account_name = quote_match.group(1).strip()
-            
-            from piggy_bank.services import add_account
-            result = add_account(db=db, name=account_name, subscription_id=subscription_id)
-            
-            if result["error"]:
-                return f"Sorry, I couldn't create the account: {result['error']}"
-            else:
-                return f"Great! I've created a new account named '{account_name}' for you. Account ID: {result['response']['account_id']}"
-        
-        # Get accounts / list accounts
-        elif any(phrase in user_lower for phrase in ["show", "list", "get", "what"]) and "account" in user_lower:
-            from piggy_bank.services import get_accounts
-            result = get_accounts(db=db, subscription_id=subscription_id)
-            
-            if result["error"]:
-                return f"Sorry, I couldn't retrieve your accounts: {result['error']}"
-            else:
-                accounts = result["response"]["accounts"]
-                if not accounts:
-                    return "You don't have any accounts yet. Would you like me to create one for you?"
-                else:
-                    account_list = []
-                    for account in accounts:
-                        account_list.append(f"- {account['name']}: ${account['balance']:.2f} (ID: {account['id']})")
-                    return f"Here are your accounts:\n" + "\n".join(account_list)
-        
-        # Add money
-        elif ("add" in user_lower and "$" in user_message):
-            # Simple parsing - look for amount and account
-            import re
-            amount_match = re.search(r'\$?(\d+(?:\.\d{2})?)', user_message)
-            amount = float(amount_match.group(1)) if amount_match else 100.0
-            
-            # Get first account for simplicity
-            from piggy_bank.services import get_accounts, add_money
-            accounts_result = get_accounts(db=db, subscription_id=subscription_id)
-            
-            if accounts_result["error"] or not accounts_result["response"]["accounts"]:
-                return "You need to create an account first. Would you like me to create one for you?"
-            
-            account = accounts_result["response"]["accounts"][0]
-            account_id = account["id"]
-            
-            result = add_money(
-                db=db,
-                account_id=account_id,
-                amount=amount,
-                reason="Manual deposit",
-                subscription_id=subscription_id
-            )
-            
-            if result["error"]:
-                return f"Sorry, I couldn't add the money: {result['error']}"
-            else:
-                return f"Successfully added ${amount:.2f} to your {account['name']} account. New balance: ${result['response']['balance']:.2f}"
-        
-        # Get balance
-        elif "balance" in user_lower:
-            from piggy_bank.services import get_accounts
-            result = get_accounts(db=db, subscription_id=subscription_id)
-            
-            if result["error"] or not result["response"]["accounts"]:
-                return "You don't have any accounts yet. Would you like me to create one for you?"
-            
-            accounts = result["response"]["accounts"]
-            if len(accounts) == 1:
-                account = accounts[0]
-                return f"Your {account['name']} account balance is ${account['balance']:.2f}"
-            else:
-                balance_list = []
-                for account in accounts:
-                    balance_list.append(f"- {account['name']}: ${account['balance']:.2f}")
-                return f"Here are your account balances:\n" + "\n".join(balance_list)
-        
-        # Default response
-        else:
-            return """Hello! I'm your piggy bank assistant. I can help you with:
-- Creating accounts ("Create a savings account")
-- Checking balances ("What's my balance?")
-- Adding money ("Add $50 to my account")
-- Listing accounts ("Show me my accounts")
-
-What would you like to do?"""
-    
-    except Exception as e:
-        log.error("Error in simulated execution: %s", e)
-        return f"I encountered an error: {str(e)}"
 
 
 # ------------------ SESSION HELPERS ------------------
