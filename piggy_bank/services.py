@@ -15,17 +15,23 @@ class ServiceResult(TypedDict):
 
 def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
     try:
-        db.execute(
+        cursor = db.execute(
             "INSERT INTO accounts (name, subscription_id) VALUES (?, ?)",
             (name, subscription_id),
         )
+        account_id = cursor.lastrowid
         log.info(
-            'Account "%s" created with balance of 0 for subscription %s',
+            'Account "%s" created with balance of 0 for subscription %s (ID: %s)',
             name,
             subscription_id,
+            account_id,
         )
+        db.commit()
         return {
-            "response": {"message": f'Account "{name}" created with balance of 0'},
+            "response": {
+                "message": f'Account "{name}", created with balance of 0',
+                "account_id": account_id,
+            },
             "error": None,
         }
     except sqlite3.IntegrityError:
