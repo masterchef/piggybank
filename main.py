@@ -14,6 +14,7 @@ import sqlite3
 
 # CrewAI imports
 from crewai import Agent, Task, Crew
+from crewai.llm import LLM
 
 load_dotenv()
 
@@ -77,6 +78,21 @@ def create_piggy_bank_crew():
     if crew is not None:
         return crew
     
+    # Configure the language model
+    # Default to OpenAI GPT-4, but allow customization via environment variables
+    model_provider = os.getenv("CREWAI_MODEL_PROVIDER", "openai")
+    model_name = os.getenv("CREWAI_MODEL_NAME", "gpt-4")
+    api_key = os.getenv("CREWAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    
+    if not api_key:
+        raise ValueError("CREWAI_API_KEY or OPENAI_API_KEY environment variable is required")
+    
+    # Create LLM configuration
+    llm = LLM(
+        model=f"{model_provider}/{model_name}",
+        api_key=api_key
+    )
+    
     # Create CrewAI tools with proper context
     def get_current_db():
         from flask import g
@@ -98,6 +114,7 @@ def create_piggy_bank_crew():
         Always provide clear feedback about the operations performed.
         Pay attention to the conversation history to understand context and references to previous operations.""",
         tools=crewai_tools,
+        llm=llm,
         verbose=True
     )
     
