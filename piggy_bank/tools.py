@@ -1,7 +1,8 @@
 import json
 import logging
 import sqlite3
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
+from openai.types.chat import ChatCompletionMessageToolCall
 from piggy_bank.services import (
     add_account,
     get_balance,
@@ -13,12 +14,6 @@ from piggy_bank.services import (
 )
 
 log = logging.getLogger(__name__)
-
-# Mock tool call structure for CrewAI compatibility
-class MockToolCall:
-    def __init__(self, tool_name: str, arguments: str, tool_call_id: str = None):
-        self.function = type('Function', (), {'name': tool_name, 'arguments': arguments})()
-        self.id = tool_call_id or f"call_{tool_name}"
 
 
 def get_tools() -> list[dict[str, Any]]:
@@ -179,7 +174,7 @@ def get_tools() -> list[dict[str, Any]]:
 
 
 def run_tools(
-    db: sqlite3.Connection, subscription_id: int, tool_calls: Union[List[MockToolCall], List[Any]]
+    db: sqlite3.Connection, subscription_id: int, tool_calls: List[ChatCompletionMessageToolCall]
 ) -> List[Dict[str, Any]]:
     tool_outputs = []
     for tool_call in tool_calls:

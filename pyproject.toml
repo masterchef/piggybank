@@ -3,7 +3,7 @@ name = "piggy_bank"
 version = "1.0.0"
 dependencies = [
     "Flask",
-    "crewai",
+    "openai",
     "python-dotenv"
 ]
 

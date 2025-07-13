@@ -17,9 +17,9 @@ def test_check_auth_invalid_token(client):
     assert "Invalid subscription token" in response.get_data(as_text=True)
 
 
-@patch("main.process_crewai_response")
-def test_agent_endpoint_success(mock_process_crewai, client):
-    mock_process_crewai.return_value = MagicMock(content="Test response")
+@patch("main.process_openai_response")
+def test_agent_endpoint_success(mock_process_openai, client):
+    mock_process_openai.return_value = MagicMock(content="Test response")
 
     response = client.post(
         "/agent",

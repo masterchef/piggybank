@@ -28,26 +28,10 @@ It's the easiest and most fun way to teach kids about money, savings and work va
    - Install all required dependencies
 
 2. Set up environment variables:
-   Create a `.env` file in the project root with your CrewAI configuration:
+   Create a `.env` file in the project root with your OpenAI API key:
    ```
-   # Required: API key for the model provider
-   CREWAI_API_KEY=your_openai_api_key_here
-   # OR alternatively:
-   OPENAI_API_KEY=your_openai_api_key_here
-   
-   # Optional: Customize model provider and model
-   CREWAI_MODEL_PROVIDER=openai  # Default: openai
-   CREWAI_MODEL_NAME=gpt-4       # Default: gpt-4
+   OPEN_AI_KEY=your_openai_api_key_here
    ```
-   
-   **Model Configuration:**
-   - `CREWAI_MODEL_PROVIDER`: The model provider (default: "openai")
-   - `CREWAI_MODEL_NAME`: The specific model to use (default: "gpt-4")
-   - `CREWAI_API_KEY` or `OPENAI_API_KEY`: Your API key for the model provider
-   
-   **Supported Providers:** OpenAI (gpt-4, gpt-3.5-turbo, gpt-4-turbo), and other providers supported by CrewAI
-   
-   **Note:** You need a valid API key for the configured model provider. The application requires real API access for full functionality.
 
 3. Run the application:
    ```bash
@@ -173,13 +157,10 @@ The database file (`pigbank.db`) is created automatically when the application s
 ## Technical Details
 
 ### AI Integration
-- Uses CrewAI framework for AI agent-based natural language processing
-- Configurable model provider support (OpenAI GPT-4 by default)
-- Supports model customization via environment variables (CREWAI_MODEL_PROVIDER, CREWAI_MODEL_NAME)
-- Implements agent-based approach to execute financial operations with real API calls
+- Uses OpenAI's GPT-4 Turbo model for natural language processing
+- Implements function calling to execute financial operations
 - Supports parallel tool execution for complex multi-step requests
 - Maintains conversation context through session management
-- **Requires valid API key for configured model provider**
 
 ### Authentication & Authorization
 - Subscription-based multi-tenant architecture
@@ -300,7 +281,7 @@ To run this application automatically on a Raspberry Pi at startup, you can use 
 
 ### Core Dependencies
 - **Flask** - Web framework
-- **crewai** - CrewAI framework for AI agent-based operations
+- **openai** - OpenAI API client for AI functionality
 - **python-dotenv** - Environment variable management
 
 ### Development Dependencies
