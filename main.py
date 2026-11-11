@@ -22,7 +22,7 @@ app.config["DATABASE"] = DB_FILE
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
-OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-5.5")
+OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 # Upper bound on model <-> tool round trips per request, so a confused model can't loop forever.
 MAX_TOOL_ROUNDS: int = 8
 
