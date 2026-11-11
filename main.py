@@ -22,7 +22,9 @@ app.config["DATABASE"] = DB_FILE
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
-OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-5")
+OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-5.5")
+# Upper bound on model <-> tool round trips per request, so a confused model can't loop forever.
+MAX_TOOL_ROUNDS: int = 8
 
 SESSION_TIMEOUT_SECONDS: int = 60
 
@@ -67,6 +69,11 @@ def check_auth() -> Optional[Tuple[Response, int]]:
 # ------------------ OPENAI HELPERS ------------------
 
 
+def _is_current_format(messages_json: str) -> bool:
+    """False for sessions saved in the old Chat Completions format, which the Responses API rejects."""
+    return not any(item.get("role") == "tool" or "tool_calls" in item for item in json.loads(messages_json))
+
+
 def get_or_create_session(
     session_id: Optional[str], now: float, subscription_id: int
 ) -> Tuple[str, List[Dict[str, Any]]]:
@@ -80,7 +87,7 @@ def get_or_create_session(
             (session_id, subscription_id),
         )
         row = cur.fetchone()
-        if row and now - row["last_access"] < SESSION_TIMEOUT_SECONDS:
+        if row and now - row["last_access"] < SESSION_TIMEOUT_SECONDS and _is_current_format(row["messages"]):
             # Update last access time
             db.execute("UPDATE sessions SET last_access = ? WHERE id = ?", (now, session_id))
             db.commit()
@@ -98,7 +105,7 @@ def get_or_create_session(
         (subscription_id,),
     )
     row = cur.fetchone()
-    if row and now - row["last_access"] < SESSION_TIMEOUT_SECONDS:
+    if row and now - row["last_access"] < SESSION_TIMEOUT_SECONDS and _is_current_format(row["messages"]):
         # Update last access time
         db.execute("UPDATE sessions SET last_access = ? WHERE id = ?", (now, row["id"]))
         db.commit()
@@ -122,7 +129,7 @@ def get_or_create_session(
 
     messages = [
         {
-            "role": "system",
+            "role": "developer",
             "content": f"""You are a helpful piggy bank assistant that immediately executes all requested operations.
             You have access to a set of tools to manage accounts, and you can call multiple tools in parallel.
 
@@ -152,40 +159,33 @@ def update_session_messages(session_id: str, messages: List[Dict[str, Any]]) -> 
     db.commit()
 
 
-def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> Any:
-    """Process OpenAI response and handle tool calls if needed."""
+def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]) -> str:
+    """Run the agent loop: call the model, run any tools it asks for, repeat until it answers.
+
+    `messages` is the session's Responses API input history and is extended in place.
+    """
     db = get_db()
-    response = client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=messages,  # type: ignore
-        tools=get_tools(),  # type: ignore
-    )
-    response_message = response.choices[0].message
-    tool_calls = response_message.tool_calls
-
-    log.debug("Received response: %s", response_message.content)
-
-    if tool_calls:
-        log.info(
-            "Tool calls requested: %s",
-            [f"{tc.function.name}({tc.function.arguments})" for tc in tool_calls],
-        )
-        messages.append(response_message.model_dump())  # Convert to dict
-
-        with app.app_context():
-            tool_outputs = run_tools(db, subscription_id, tool_calls)
-
-        for tool_output in tool_outputs:
-            messages.append(tool_output)
-
-        second_response = client.chat.completions.create(
+    for _ in range(MAX_TOOL_ROUNDS):
+        response = client.responses.create(
             model=OPENAI_MODEL,
-            messages=messages,  # type: ignore
+            input=messages,  # type: ignore[arg-type]
+            tools=get_tools(),
+            # History is kept in our own DB, so don't also store it at OpenAI. Reasoning items
+            # are then returned encrypted so they can be passed back on the next call.
+            store=False,
+            include=["reasoning.encrypted_content"],
         )
-        response_message = second_response.choices[0].message
+        messages.extend(item.model_dump(mode="json", exclude_none=True) for item in response.output)
 
-    messages.append(response_message.model_dump())  # Convert to dict
-    return response_message
+        tool_calls = [item for item in response.output if item.type == "function_call"]
+        if not tool_calls:
+            log.debug("Received response: %s", response.output_text)
+            return response.output_text
+
+        log.info("Tool calls requested: %s", [f"{tc.name}({tc.arguments})" for tc in tool_calls])
+        messages.extend(run_tools(db, subscription_id, tool_calls))  # type: ignore[arg-type]
+
+    raise RuntimeError(f"Agent did not finish within {MAX_TOOL_ROUNDS} tool rounds")
 
 
 def cleanup_expired_sessions() -> None:
@@ -219,15 +219,15 @@ def agent() -> Union[Response, Tuple[Response, int]]:
         messages.append({"role": "user", "content": user_query})
 
         # Process OpenAI response and handle tool calls
-        response_message = process_openai_response(subscription_id, messages)
+        response_text = process_openai_response(subscription_id, messages)
 
         # Update session with new messages
         update_session_messages(session_id, messages)
 
-        return jsonify({"response": response_message.content, "session_id": session_id})
+        return jsonify({"response": response_text, "session_id": session_id})
 
     except Exception as e:
-        log.error("Error in OpenAI integration: %s", e)
+        log.exception("Error in OpenAI integration: %s", e)
         return jsonify({"error": str(e)}), 500
 
 

@@ -1,10 +1,11 @@
 [project]
 name = "piggy_bank"
 version = "1.0.0"
+requires-python = ">=3.10"
 dependencies = [
-    "Flask",
-    "openai",
-    "python-dotenv"
+    "Flask>=3.1,<4",
+    "openai>=3.49,<4",
+    "python-dotenv>=1.2,<2"
 ]
 
 [project.optional-dependencies]

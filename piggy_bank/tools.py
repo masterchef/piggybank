@@ -1,9 +1,13 @@
 import json
 import logging
 import sqlite3
-from typing import Any, Dict, List
-from openai.types.chat import ChatCompletionMessageToolCall
+from typing import Any, Callable, Dict, List
+
+from openai.types.responses import FunctionToolParam, ResponseFunctionToolCall
+from openai.types.responses.response_input_item_param import FunctionCallOutput
+
 from piggy_bank.services import (
+    ServiceResult,
     add_account,
     get_balance,
     get_transactions,
@@ -15,237 +19,130 @@ from piggy_bank.services import (
 
 log = logging.getLogger(__name__)
 
+_ACCOUNT_ID = {"type": "integer", "description": "The ID of the account."}
 
-def get_tools() -> list[dict[str, Any]]:
+
+def _function_tool(name: str, description: str, properties: Dict[str, Any]) -> FunctionToolParam:
+    """Build a strict Responses API function tool.
+
+    Strict mode makes the model's arguments always match the schema, which requires
+    every property to be listed in `required` and `additionalProperties` to be false.
+    """
+    return {
+        "type": "function",
+        "name": name,
+        "description": description,
+        "parameters": {
+            "type": "object",
+            "properties": properties,
+            "required": list(properties),
+            "additionalProperties": False,
+        },
+        "strict": True,
+    }
+
+
+def get_tools() -> List[FunctionToolParam]:
     return [
-        {
-            "type": "function",
-            "function": {
-                "name": "add_account",
-                "description": "Adds a new account to the piggy bank.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the account to add.",
-                        },
-                    },
-                    "required": ["name"],
-                },
+        _function_tool(
+            "add_account",
+            "Adds a new account to the piggy bank.",
+            {"name": {"type": "string", "description": "The name of the account to add."}},
+        ),
+        _function_tool(
+            "get_balance",
+            "Gets the balance of a specific account.",
+            {"account_id": _ACCOUNT_ID},
+        ),
+        _function_tool(
+            "get_transactions",
+            "Gets the transaction history for a specific account.",
+            {"account_id": _ACCOUNT_ID},
+        ),
+        _function_tool(
+            "add_money",
+            "Adds money to a specific account.",
+            {
+                "account_id": _ACCOUNT_ID,
+                "amount": {"type": "number", "description": "The amount of money to add."},
+                "reason": {"type": "string", "description": "The reason for adding the money."},
             },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_balance",
-                "description": "Gets the balance of a specific account.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account.",
-                        },
-                    },
-                    "required": ["account_id"],
-                },
+        ),
+        _function_tool(
+            "withdraw_money",
+            "Withdraws money from a specific account.",
+            {
+                "account_id": _ACCOUNT_ID,
+                "amount": {"type": "number", "description": "The amount of money to withdraw."},
+                "reason": {"type": "string", "description": "The reason for withdrawing the money."},
             },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_transactions",
-                "description": "Gets the transaction history for a specific account.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account.",
-                        },
-                    },
-                    "required": ["account_id"],
-                },
+        ),
+        _function_tool(
+            "transfer_money",
+            "Transfers money from one account to another.",
+            {
+                "from_account_id": {"type": "integer", "description": "The ID of the account to transfer from."},
+                "to_account_id": {"type": "integer", "description": "The ID of the account to transfer to."},
+                "amount": {"type": "number", "description": "The amount of money to transfer."},
+                "reason": {"type": "string", "description": "The reason for the transfer."},
             },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "add_money",
-                "description": "Adds money to a specific account.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account.",
-                        },
-                        "amount": {
-                            "type": "number",
-                            "description": "The amount of money to add.",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "The reason for adding the money.",
-                        },
-                    },
-                    "required": ["account_id", "amount", "reason"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "withdraw_money",
-                "description": "Withdraws money from a specific account.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account.",
-                        },
-                        "amount": {
-                            "type": "number",
-                            "description": "The amount of money to withdraw.",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "The reason for withdrawing the money.",
-                        },
-                    },
-                    "required": ["account_id", "amount", "reason"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "transfer_money",
-                "description": "Transfers money from one account to another.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "from_account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account to transfer from.",
-                        },
-                        "to_account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account to transfer to.",
-                        },
-                        "amount": {
-                            "type": "number",
-                            "description": "The amount of money to transfer.",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "The reason for the transfer.",
-                        },
-                    },
-                    "required": [
-                        "from_account_id",
-                        "to_account_id",
-                        "amount",
-                        "reason",
-                    ],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "remove_account",
-                "description": "Removes an account and all its associated transactions. Account must have zero balance before removal.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "account_id": {
-                            "type": "integer",
-                            "description": "The ID of the account to remove.",
-                        },
-                    },
-                    "required": ["account_id"],
-                },
-            },
-        },
+        ),
+        _function_tool(
+            "remove_account",
+            "Removes an account and all its associated transactions. " "Account must have zero balance before removal.",
+            {"account_id": {"type": "integer", "description": "The ID of the account to remove."}},
+        ),
     ]
 
 
+def _handlers() -> Dict[str, Callable[..., ServiceResult]]:
+    # Resolved on each call (not at import time) so tests can patch the service functions.
+    return {
+        "add_account": add_account,
+        "get_balance": get_balance,
+        "get_transactions": get_transactions,
+        "add_money": add_money,
+        "withdraw_money": withdraw_money,
+        "transfer_money": transfer_money,
+        "remove_account": remove_account,
+    }
+
+
+def _run_tool(db: sqlite3.Connection, subscription_id: int, tool_call: ResponseFunctionToolCall) -> Dict[str, Any]:
+    """Run one tool call and return a JSON-serialisable result.
+
+    Failures are returned as {"error": ...} so the model can see what went wrong and
+    recover, instead of the whole request failing.
+    """
+    handler = _handlers().get(tool_call.name)
+    if handler is None:
+        return {"error": f"Unknown tool: {tool_call.name}"}
+    try:
+        kwargs = json.loads(tool_call.arguments or "{}")
+    except json.JSONDecodeError as e:
+        return {"error": f"Invalid JSON arguments: {e}"}
+    try:
+        result = handler(db=db, subscription_id=subscription_id, **kwargs)
+    except Exception as e:  # noqa: BLE001 - surface any service failure to the model
+        log.exception("Tool %s failed", tool_call.name)
+        return {"error": f"{type(e).__name__}: {e}"}
+    if result["error"]:
+        return {"error": result["error"]}
+    return result["response"]
+
+
 def run_tools(
-    db: sqlite3.Connection, subscription_id: int, tool_calls: List[ChatCompletionMessageToolCall]
-) -> List[Dict[str, Any]]:
-    tool_outputs = []
+    db: sqlite3.Connection, subscription_id: int, tool_calls: List[ResponseFunctionToolCall]
+) -> List[FunctionCallOutput]:
+    """Run the model's function calls and return Responses API `function_call_output` items."""
+    outputs: List[FunctionCallOutput] = []
     for tool_call in tool_calls:
-        tool_name = tool_call.function.name
-        kwargs = json.loads(tool_call.function.arguments)
-        # Inject subscription_id from Flask context if available
-        log.info("subscription_id: %s", subscription_id)
-
-        if tool_name == "add_account":
-            result = add_account(
-                db=db,
-                name=str(kwargs.get("name")),
-                subscription_id=subscription_id,
-            )
-        elif tool_name == "get_balance":
-            result = get_balance(
-                db=db,
-                account_id=int(kwargs.get("account_id")),
-                subscription_id=subscription_id,
-            )
-        elif tool_name == "get_transactions":
-            result = get_transactions(
-                db=db,
-                account_id=int(kwargs.get("account_id")),
-                subscription_id=subscription_id,
-            )
-        elif tool_name == "add_money":
-            result = add_money(
-                db=db,
-                account_id=int(kwargs.get("account_id")),
-                amount=float(kwargs.get("amount") or 0.0),
-                reason=str(kwargs.get("reason")),
-                subscription_id=subscription_id,
-            )
-        elif tool_name == "withdraw_money":
-            result = withdraw_money(
-                db=db,
-                account_id=int(kwargs.get("account_id")),
-                amount=float(kwargs.get("amount") or 0.0),
-                reason=str(kwargs.get("reason")),
-                subscription_id=subscription_id,
-            )
-        elif tool_name == "transfer_money":
-            result = transfer_money(
-                db=db,
-                from_account_id=int(kwargs.get("from_account_id")),
-                to_account_id=int(kwargs.get("to_account_id")),
-                amount=float(kwargs.get("amount") or 0.0),
-                reason=str(kwargs.get("reason")),
-                subscription_id=subscription_id,
-            )
-        elif tool_name == "remove_account":
-            result = remove_account(
-                db=db,
-                account_id=int(kwargs.get("account_id")),
-                subscription_id=subscription_id,
-            )
-        else:
-            raise ValueError(f"Unknown tool: {tool_name}")
-
-        if result["error"]:
-            tool_output = json.dumps({"error": result["error"]})
-        else:
-            tool_output = json.dumps(result["response"])
-
-        tool_outputs.append(
+        log.info("Running tool %s(%s) for subscription %s", tool_call.name, tool_call.arguments, subscription_id)
+        outputs.append(
             {
-                "tool_call_id": tool_call.id,
-                "role": "tool",
-                "name": tool_name,
-                "content": tool_output,
+                "type": "function_call_output",
+                "call_id": tool_call.call_id,
+                "output": json.dumps(_run_tool(db, subscription_id, tool_call)),
             }
         )
-    return tool_outputs
+    return outputs
