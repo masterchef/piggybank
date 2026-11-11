@@ -1,4 +1,7 @@
+import logging
 import sqlite3
+
+log = logging.getLogger(__name__)
 
 
 def normalize_account_name(name: str) -> str:
@@ -71,3 +74,28 @@ def create_tables(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_subscription_access ON sessions (subscription_id, last_access)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_access ON sessions (last_access)")
     db.commit()
+    _ensure_case_insensitive_account_names(db)
+
+
+def _ensure_case_insensitive_account_names(db: sqlite3.Connection) -> None:
+    """Make account names unique per subscription regardless of case ("Switch" == "switch").
+
+    Siri transcriptions vary in capitalization, which used to create duplicate accounts.
+    An index works for existing databases too, without rebuilding the accounts table.
+    """
+    try:
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_subscription_name_nocase "
+            "ON accounts (subscription_id, name COLLATE NOCASE)"
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # Existing case-only duplicates block the index; keep running and say which ones to merge.
+        duplicates = db.execute(
+            "SELECT subscription_id, GROUP_CONCAT(name, ', ') AS names FROM accounts "
+            "GROUP BY subscription_id, name COLLATE NOCASE HAVING COUNT(*) > 1"
+        ).fetchall()
+        log.warning(
+            "Account names are not case-insensitive yet: remove or rename these duplicates: %s",
+            "; ".join(f"subscription {row[0]}: {row[1]}" for row in duplicates),
+        )
