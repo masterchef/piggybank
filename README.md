@@ -157,8 +157,9 @@ The database file (`pigbank.db`) is created automatically when the application s
 ## Technical Details
 
 ### AI Integration
-- Uses OpenAI's GPT-5 model for natural language processing (override with `OPENAI_MODEL` in `.env`)
-- Implements function calling to execute financial operations
+- Uses OpenAI's GPT-5.5 model through the Responses API (override with `OPENAI_MODEL` in `.env`)
+- Implements strict function calling to execute financial operations
+- Runs an agent loop: the model can chain several rounds of tool calls (e.g. create an account, then deposit into it) before answering
 - Supports parallel tool execution for complex multi-step requests
 - Maintains conversation context through session management
 
