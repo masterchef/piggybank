@@ -1,6 +1,6 @@
 import sqlite3
 import logging
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Tuple
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -11,6 +11,18 @@ class ServiceResult(TypedDict):
 
     response: dict
     error: Optional[str]
+
+
+def _validate_amount(amount: float) -> Tuple[float, Optional[str]]:
+    """Round an amount to whole cents and reject anything that isn't a positive amount.
+
+    Balances are sums of REAL amounts, so keeping every stored amount at cent precision
+    (and rounding sums to cents) keeps a fully withdrawn account at exactly 0.
+    """
+    amount = round(amount, 2)
+    if amount <= 0:
+        return amount, "Amount must be at least $0.01"
+    return amount, None
 
 
 def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
@@ -42,7 +54,7 @@ def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> Serv
 def get_accounts(db: sqlite3.Connection, subscription_id: int) -> ServiceResult:
     rows = db.execute(
         """
-        SELECT a.name, a.id, COALESCE(SUM(t.amount), 0) as balance
+        SELECT a.name, a.id, ROUND(COALESCE(SUM(t.amount), 0), 2) as balance
         FROM accounts a
         LEFT JOIN transactions t ON a.id = t.account_id
         WHERE a.subscription_id = ?
@@ -71,7 +83,7 @@ def get_balance(db: sqlite3.Connection, account_id: int, subscription_id: int) -
         return {"response": {}, "error": "Account not found"}
 
     balance_row = db.execute(
-        "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
+        "SELECT ROUND(COALESCE(SUM(amount), 0), 2) as balance FROM transactions WHERE account_id = ?",
         (account_id,),
     ).fetchone()
     log.info(
@@ -134,6 +146,9 @@ def get_transactions(db: sqlite3.Connection, account_id: int, subscription_id: i
 def add_money(
     db: sqlite3.Connection, account_id: int, amount: float, reason: str, subscription_id: int
 ) -> ServiceResult:
+    amount, error = _validate_amount(amount)
+    if error:
+        return {"response": {}, "error": error}
     # Verify account belongs to subscription
     account = db.execute(
         "SELECT id FROM accounts WHERE id = ? AND subscription_id = ?",
@@ -165,6 +180,9 @@ def add_money(
 def withdraw_money(
     db: sqlite3.Connection, account_id: int, amount: float, reason: str, subscription_id: int
 ) -> ServiceResult:
+    amount, error = _validate_amount(amount)
+    if error:
+        return {"response": {}, "error": error}
     # Verify account belongs to subscription
     account = db.execute(
         "SELECT id FROM accounts WHERE id = ? AND subscription_id = ?",
@@ -179,7 +197,7 @@ def withdraw_money(
         return {"response": {}, "error": "Account not found"}
 
     balance_row = db.execute(
-        "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
+        "SELECT ROUND(COALESCE(SUM(amount), 0), 2) as balance FROM transactions WHERE account_id = ?",
         (account_id,),
     ).fetchone()
     current_balance = balance_row["balance"]
@@ -216,6 +234,9 @@ def transfer_money(
     reason: str,
     subscription_id: int,
 ) -> ServiceResult:
+    amount, error = _validate_amount(amount)
+    if error:
+        return {"response": {}, "error": error}
     try:
         db.execute("BEGIN")
 
@@ -246,7 +267,7 @@ def transfer_money(
         to_name = to_account["name"]
 
         balance_row = db.execute(
-            "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
+            "SELECT ROUND(COALESCE(SUM(amount), 0), 2) as balance FROM transactions WHERE account_id = ?",
             (from_account_id,),
         ).fetchone()
         if balance_row["balance"] < amount:
@@ -309,7 +330,7 @@ def remove_account(db: sqlite3.Connection, account_id: int, subscription_id: int
 
     # Check account balance
     balance_row = db.execute(
-        "SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE account_id = ?",
+        "SELECT ROUND(COALESCE(SUM(amount), 0), 2) as balance FROM transactions WHERE account_id = ?",
         (account_id,),
     ).fetchone()
     current_balance = balance_row["balance"]
