@@ -22,6 +22,7 @@ app.config["DATABASE"] = DB_FILE
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
+OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-5")
 
 SESSION_TIMEOUT_SECONDS: int = 60
 
@@ -155,7 +156,7 @@ def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]
     """Process OpenAI response and handle tool calls if needed."""
     db = get_db()
     response = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model=OPENAI_MODEL,
         messages=messages,  # type: ignore
         tools=get_tools(),  # type: ignore
     )
@@ -178,7 +179,7 @@ def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]
             messages.append(tool_output)
 
         second_response = client.chat.completions.create(
-            model="gpt-4-turbo",
+            model=OPENAI_MODEL,
             messages=messages,  # type: ignore
         )
         response_message = second_response.choices[0].message
