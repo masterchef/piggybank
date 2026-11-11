@@ -157,7 +157,7 @@ The database file (`pigbank.db`) is created automatically when the application s
 ## Technical Details
 
 ### AI Integration
-- Uses OpenAI's GPT-4 Turbo model for natural language processing
+- Uses OpenAI's GPT-5 model for natural language processing (override with `OPENAI_MODEL` in `.env`)
 - Implements function calling to execute financial operations
 - Supports parallel tool execution for complex multi-step requests
 - Maintains conversation context through session management
