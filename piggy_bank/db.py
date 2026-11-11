@@ -11,6 +11,10 @@ def normalize_account_name(name: str) -> str:
 def init_db(path: str) -> sqlite3.Connection:
     db = sqlite3.connect(path, check_same_thread=False)
     db.row_factory = sqlite3.Row
+    # WAL avoids a full journal rewrite on every commit, which is slow on a Raspberry Pi SD card.
+    # synchronous=NORMAL is safe with WAL: a crash can't corrupt the DB, only lose the last commit on power loss.
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL")
     create_tables(db)
     return db
 
@@ -60,4 +64,10 @@ def create_tables(db: sqlite3.Connection) -> None:
         )
     """
     )
+    # Balance sums and "last N transactions" filter by account and sort by time.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_transactions_account_time ON transactions (account_id, timestamp)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_accounts_subscription ON accounts (subscription_id)")
+    # Finding a subscription's latest session, and deleting expired ones.
+    db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_subscription_access ON sessions (subscription_id, last_access)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_access ON sessions (last_access)")
     db.commit()

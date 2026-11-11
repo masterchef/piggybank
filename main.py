@@ -3,9 +3,11 @@ import logging
 import time
 import uuid
 import json
-from typing import Optional, Dict, Any, Union, Tuple, List
+from typing import Optional, Dict, Any, Union, Tuple, List, cast
 from flask import Flask, request, jsonify, g, Response
 from openai import OpenAI
+from openai.types.responses import ResponseTextConfigParam
+from openai.types.shared_params import Reasoning, ReasoningEffort
 from dotenv import load_dotenv
 from piggy_bank.db import init_db
 from piggy_bank.tools import get_tools, run_tools
@@ -25,6 +27,20 @@ client = OpenAI(api_key=os.environ.get("OPEN_AI_KEY"))
 OPENAI_MODEL: str = os.environ.get("OPENAI_MODEL", "gpt-6-luna")
 # Upper bound on model <-> tool round trips per request, so a confused model can't loop forever.
 MAX_TOOL_ROUNDS: int = 8
+# Piggy bank operations are simple, so less reasoning and shorter replies keep Siri responses fast.
+OPENAI_REASONING_EFFORT = cast(ReasoningEffort, os.environ.get("OPENAI_REASONING_EFFORT", "low"))
+
+SYSTEM_PROMPT: str = """You are the family piggy bank assistant. Your replies are read aloud by Siri, \
+so answer in short, plain sentences: no markdown, bullet points, emoji or symbols other than $.
+
+Carry out every requested operation right away, without asking for confirmation. For multi-step \
+requests (for example "open an account and add money"), complete all of the steps, calling tools \
+in parallel when they don't depend on each other.
+
+Answer every part of the request. If money was added, withdrawn or transferred, say the new balance \
+of each affected account. If asked for transactions, read them out briefly: amount, reason and date.
+
+Use the account IDs listed below instead of looking accounts up."""
 
 SESSION_TIMEOUT_SECONDS: int = 60
 
@@ -127,19 +143,7 @@ def get_or_create_session(
     else:
         accounts_info = "\n\nNo accounts currently exist."
 
-    messages = [
-        {
-            "role": "developer",
-            "content": f"""You are a helpful piggy bank assistant that immediately executes all requested operations.
-            You have access to a set of tools to manage accounts, and you can call multiple tools in parallel.
-
-            IMPORTANT: Do NOT ask for verification or user approval - execute all requested actions immediately.
-            When given multi-step commands (like "add money and transfer"), execute ALL steps in the same response.
-            Do NOT plan or explain what you will do - just do it immediately.
-            
-            If money was added, transferred or withdrawn, you should always return the updated balance after all operations are complete.{accounts_info}""",
-        }
-    ]
+    messages = [{"role": "developer", "content": SYSTEM_PROMPT + accounts_info}]
 
     db.execute(
         "INSERT INTO sessions (id, subscription_id, messages, last_access) VALUES (?, ?, ?, ?)",
@@ -170,6 +174,8 @@ def process_openai_response(subscription_id: int, messages: List[Dict[str, Any]]
             model=OPENAI_MODEL,
             input=messages,  # type: ignore[arg-type]
             tools=get_tools(),
+            reasoning=Reasoning(effort=OPENAI_REASONING_EFFORT),
+            text=ResponseTextConfigParam(verbosity="low"),
             # History is kept in our own DB, so don't also store it at OpenAI. Reasoning items
             # are then returned encrypted so they can be passed back on the next call.
             store=False,
@@ -212,6 +218,9 @@ def agent() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": "Query is required"}), 400
 
     try:
+        # Sessions expire after a minute; drop old ones so the table (and its lookups) stay small.
+        cleanup_expired_sessions()
+
         # Get or create session and retrieve conversation history
         session_id, messages = get_or_create_session(session_id, time.time(), subscription_id)
 
