@@ -160,6 +160,8 @@ cython_debug/
 
 # Database files
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 
