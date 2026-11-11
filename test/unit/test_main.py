@@ -113,6 +113,8 @@ def test_process_openai_response_runs_multiple_tool_rounds(mock_client, mock_run
     kwargs = mock_client.responses.create.call_args.kwargs
     assert kwargs["model"] == main.OPENAI_MODEL
     assert kwargs["store"] is False
+    assert kwargs["reasoning"] == {"effort": main.OPENAI_REASONING_EFFORT}
+    assert kwargs["text"] == {"verbosity": "low"}
     assert kwargs["tools"]  # tools stay available on every round
 
 
@@ -129,3 +131,34 @@ def test_is_current_format_rejects_chat_completions_history():
     assert main._is_current_format(json.dumps([{"role": "developer", "content": "x"}]))
     assert not main._is_current_format(json.dumps([{"role": "tool", "tool_call_id": "1", "content": "{}"}]))
     assert not main._is_current_format(json.dumps([{"role": "assistant", "tool_calls": []}]))
+
+
+@patch("main.process_openai_response", return_value="ok")
+def test_agent_endpoint_removes_expired_sessions(_mock_process, client, app):
+    with app.app_context():
+        db = main.get_db()
+        sub_id = db.execute("SELECT id FROM subscriptions WHERE auth_token = 'test_token'").fetchone()["id"]
+        db.execute(
+            "INSERT INTO sessions (id, subscription_id, messages, last_access) VALUES ('old', ?, '[]', 0)",
+            (sub_id,),
+        )
+        db.commit()
+
+    response = client.post("/agent", headers={"Authorization": "Bearer test_token"}, json={"query": "hi"})
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert main.get_db().execute("SELECT 1 FROM sessions WHERE id = 'old'").fetchone() is None
+
+
+def test_db_uses_wal_and_indexes(app):
+    with app.app_context():
+        db = main.get_db()
+        assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        indexes = {row["name"] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+    assert {
+        "idx_transactions_account_time",
+        "idx_accounts_subscription",
+        "idx_sessions_subscription_access",
+        "idx_sessions_access",
+    } <= indexes
