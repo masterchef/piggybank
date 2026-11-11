@@ -166,3 +166,52 @@ def test_remove_account_fail_wrong_subscription(get_test_db):
     accounts_result = services.get_accounts(get_test_db, sub_id1)
     account_names = [acc["name"] for acc in accounts_result["response"]["accounts"]]
     assert "test_user" in account_names
+
+
+def test_remove_account_after_cents_cancel_out(get_test_db):
+    # 0.10 + 0.20 - 0.30 is 2.8e-17 in floating point, which used to block removal.
+    sub_id = add_subscription(get_test_db, "fam_cents", "token_cents")
+    account_id = add_account(get_test_db, "ana", sub_id)
+    services.add_money(get_test_db, account_id, 0.10, "cat", sub_id)
+    services.add_money(get_test_db, account_id, 0.20, "tidy", sub_id)
+    result = services.withdraw_money(get_test_db, account_id, 0.30, "sticker", sub_id)
+    assert result == {"response": {"balance": 0}, "error": None}
+
+    result = services.remove_account(get_test_db, account_id, sub_id)
+    assert result["error"] is None
+    assert services.get_accounts(get_test_db, sub_id)["response"]["accounts"] == []
+
+
+def test_remove_account_with_existing_float_dust(get_test_db):
+    # Rows written before amounts were rounded must not block removal either.
+    sub_id = add_subscription(get_test_db, "fam_dust", "token_dust")
+    account_id = add_account(get_test_db, "tom", sub_id)
+    get_test_db.executemany(
+        "INSERT INTO transactions (account_id, amount, reason) VALUES (?, ?, ?)",
+        [(account_id, 0.1, "a"), (account_id, 0.2, "b"), (account_id, -0.30000000000000004, "c")],
+    )
+    get_test_db.commit()
+    assert services.get_accounts(get_test_db, sub_id)["response"]["accounts"][0]["balance"] == 0
+    assert services.remove_account(get_test_db, account_id, sub_id)["error"] is None
+
+
+def test_withdraw_exact_balance_with_float_sums(get_test_db):
+    sub_id = add_subscription(get_test_db, "fam_exact", "token_exact")
+    account_id = add_account(get_test_db, "mia", sub_id)
+    services.add_money(get_test_db, account_id, 0.10, "a", sub_id)
+    services.add_money(get_test_db, account_id, 0.20, "b", sub_id)
+    # 0.1 + 0.2 sums to 0.30000000000000004; withdrawing 0.3 must still work, and so must 0.31 fail.
+    assert services.withdraw_money(get_test_db, account_id, 0.31, "too much", sub_id)["error"] == "Insufficient funds"
+    assert services.withdraw_money(get_test_db, account_id, 0.30, "all", sub_id)["error"] is None
+
+
+def test_amounts_must_be_positive_cents(get_test_db):
+    sub_id = add_subscription(get_test_db, "fam_amt", "token_amt")
+    a = add_account(get_test_db, "a", sub_id)
+    b = add_account(get_test_db, "b", sub_id)
+    error = "Amount must be at least $0.01"
+    assert services.add_money(get_test_db, a, 0.001, "dust", sub_id)["error"] == error
+    assert services.add_money(get_test_db, a, -5, "negative", sub_id)["error"] == error
+    assert services.withdraw_money(get_test_db, a, -5, "negative", sub_id)["error"] == error
+    assert services.transfer_money(get_test_db, a, b, 0, "zero", sub_id)["error"] == error
+    assert services.add_money(get_test_db, a, 1.239, "rounded", sub_id)["response"] == {"balance": 1.24}
