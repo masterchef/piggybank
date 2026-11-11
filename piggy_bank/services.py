@@ -1,7 +1,7 @@
 import sqlite3
 import logging
 from typing import TypedDict, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +26,9 @@ def _validate_amount(amount: float) -> Tuple[float, Optional[str]]:
 
 
 def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> ServiceResult:
+    name = name.strip()
+    if not name:
+        return {"response": {}, "error": "Account name is required"}
     try:
         cursor = db.execute(
             "INSERT INTO accounts (name, subscription_id) VALUES (?, ?)",
@@ -47,8 +50,13 @@ def add_account(db: sqlite3.Connection, name: str, subscription_id: int) -> Serv
             "error": None,
         }
     except sqlite3.IntegrityError:
-        log.error("Attempted to create an account that already exists: %s", name)
-        return {"response": {}, "error": "Account already exists"}
+        existing = db.execute(
+            "SELECT name FROM accounts WHERE subscription_id = ? AND name = ? COLLATE NOCASE",
+            (subscription_id, name),
+        ).fetchone()
+        existing_name = existing["name"] if existing else name
+        log.error("Attempted to create an account that already exists: %s (existing: %s)", name, existing_name)
+        return {"response": {}, "error": f'An account named "{existing_name}" already exists'}
 
 
 def get_accounts(db: sqlite3.Connection, subscription_id: int) -> ServiceResult:
@@ -59,7 +67,7 @@ def get_accounts(db: sqlite3.Connection, subscription_id: int) -> ServiceResult:
         LEFT JOIN transactions t ON a.id = t.account_id
         WHERE a.subscription_id = ?
         GROUP BY a.id, a.name
-        ORDER BY a.name
+        ORDER BY a.name COLLATE NOCASE
     """,
         (subscription_id,),
     ).fetchall()
@@ -95,6 +103,19 @@ def get_balance(db: sqlite3.Connection, account_id: int, subscription_id: int) -
     return {"response": {"balance": balance_row["balance"]}, "error": None}
 
 
+def format_transaction_date(timestamp: str, now: Optional[datetime] = None) -> str:
+    """Format a stored timestamp for speaking, e.g. "Nov 11", or "Nov 11, 2025" for other years.
+
+    SQLite's CURRENT_TIMESTAMP is UTC, so convert to the Pi's local time first; otherwise
+    evening transactions in US time zones show up as the next day.
+    """
+    local = datetime.fromisoformat(timestamp).replace(tzinfo=timezone.utc).astimezone()
+    now = now or datetime.now().astimezone()
+    if local.year == now.year:
+        return f"{local:%b} {local.day}"
+    return f"{local:%b} {local.day}, {local.year}"
+
+
 def get_transactions(db: sqlite3.Connection, account_id: int, subscription_id: int, last_n: int = 5) -> ServiceResult:
     # Verify account belongs to subscription
     account = db.execute(
@@ -114,7 +135,7 @@ def get_transactions(db: sqlite3.Connection, account_id: int, subscription_id: i
         SELECT id, amount, reason, timestamp
         FROM transactions
         WHERE account_id = ?
-        ORDER BY timestamp DESC
+        ORDER BY timestamp DESC, id DESC
         LIMIT ?
     """,
         (account_id, last_n),
@@ -124,7 +145,7 @@ def get_transactions(db: sqlite3.Connection, account_id: int, subscription_id: i
             "id": row["id"],
             "amount": row["amount"],
             "reason": row["reason"],
-            "date": datetime.fromisoformat(row["timestamp"]).strftime("%b, %d"),
+            "date": format_transaction_date(row["timestamp"]),
         }
         for row in transactions
     ]

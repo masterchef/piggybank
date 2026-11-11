@@ -1,6 +1,14 @@
+import logging
 import os
-from piggy_bank import services
+import sqlite3
 import sys
+import time
+from datetime import datetime
+
+import pytest
+
+from piggy_bank import db as db_module
+from piggy_bank import services
 
 from conftest import add_subscription, add_account
 
@@ -215,3 +223,87 @@ def test_amounts_must_be_positive_cents(get_test_db):
     assert services.withdraw_money(get_test_db, a, -5, "negative", sub_id)["error"] == error
     assert services.transfer_money(get_test_db, a, b, 0, "zero", sub_id)["error"] == error
     assert services.add_money(get_test_db, a, 1.239, "rounded", sub_id)["response"] == {"balance": 1.24}
+
+
+def test_account_names_are_case_insensitive(get_test_db):
+    sub_id = add_subscription(get_test_db, "fam_case", "token_case")
+    assert services.add_account(get_test_db, "Switch", sub_id)["error"] is None
+
+    result = services.add_account(get_test_db, "  switch ", sub_id)
+    assert result["error"] == 'An account named "Switch" already exists'
+    assert services.add_account(get_test_db, "   ", sub_id)["error"] == "Account name is required"
+
+    # The same name is still fine in another family's subscription.
+    other_sub = add_subscription(get_test_db, "fam_case2", "token_case2")
+    assert services.add_account(get_test_db, "switch", other_sub)["error"] is None
+
+
+def test_existing_database_gets_case_insensitive_names(tmp_path):
+    # A database created before the case-insensitive index existed.
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+            auth_token TEXT NOT NULL UNIQUE);
+        CREATE TABLE accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+            subscription_id INTEGER NOT NULL, UNIQUE (name, subscription_id));
+        INSERT INTO subscriptions (name, auth_token) VALUES ('fam', 't');
+        INSERT INTO accounts (name, subscription_id) VALUES ('Vinny', 1);
+        """)
+    old.close()
+
+    db = db_module.init_db(path)
+    assert services.add_account(db, "VINNY", 1)["error"] == 'An account named "Vinny" already exists'
+    db.close()
+
+
+def test_existing_case_duplicates_do_not_block_startup(tmp_path, caplog):
+    path = str(tmp_path / "dupes.db")
+    db = db_module.init_db(path)
+    db.execute("DROP INDEX idx_accounts_subscription_name_nocase")
+    db.execute("INSERT INTO subscriptions (name, auth_token) VALUES ('fam', 't')")
+    db.executemany("INSERT INTO accounts (name, subscription_id) VALUES (?, 1)", [("Switch",), ("switch",)])
+    db.commit()
+    db.close()
+
+    with caplog.at_level(logging.WARNING):
+        db = db_module.init_db(path)
+    assert "Switch, switch" in caplog.text
+    db.close()
+
+
+def test_accounts_listed_alphabetically_ignoring_case(get_test_db):
+    sub_id = add_subscription(get_test_db, "fam_sort", "token_sort")
+    for name in ["video games", "Vivian", "Vaiva"]:
+        services.add_account(get_test_db, name, sub_id)
+    names = [a["name"] for a in services.get_accounts(get_test_db, sub_id)["response"]["accounts"]]
+    assert names == ["Vaiva", "video games", "Vivian"]
+
+
+def test_transactions_in_same_second_are_newest_first(get_test_db):
+    sub_id = add_subscription(get_test_db, "fam_order", "token_order")
+    account_id = add_account(get_test_db, "tom", sub_id)
+    get_test_db.executemany(
+        "INSERT INTO transactions (account_id, amount, reason, timestamp) VALUES (?, ?, ?, '2026-11-11 20:00:00')",
+        [(account_id, 1, "first"), (account_id, 2, "second"), (account_id, 3, "third")],
+    )
+    get_test_db.commit()
+    result = services.get_transactions(get_test_db, account_id, sub_id)
+    assert [t["reason"] for t in result["response"]["transactions"]] == ["third", "second", "first"]
+
+
+@pytest.fixture
+def pacific_time(monkeypatch):
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_transaction_date_uses_local_time_and_year(pacific_time):
+    now = datetime(2026, 11, 12, 9, 0).astimezone()
+    # 03:00 UTC on Nov 12 is still the evening of Nov 11 in California.
+    assert services.format_transaction_date("2026-11-12 03:00:00", now) == "Nov 11"
+    assert services.format_transaction_date("2026-11-12 20:00:00", now) == "Nov 12"
+    assert services.format_transaction_date("2025-03-05 20:00:00", now) == "Mar 5, 2025"
